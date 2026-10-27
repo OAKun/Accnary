@@ -1,0 +1,175 @@
+# Accnary isolated regression run
+Modules: 32
+Each module ran in a separate Pex task with its own QSettings and pytest temporary directory.
+
+[0] tests\audit\test_backup_ui.py
+..                                                                       [100%]
+
+[0] tests\audit\test_build_workflow.py
+....                                                                     [100%]
+
+[0] tests\audit\test_complex_account.py
+..                                                                       [100%]
+
+[0] tests\audit\test_default_vault_path.py
+....                                                                     [100%]
+
+[0] tests\audit\test_model_regressions.py
+.......                                                                  [100%]
+
+[0] tests\audit\test_runtime.py
+........                                                                 [100%]
+
+[0] tests\audit\test_storage_regressions.py
+................                                                         [100%]
+
+[0] tests\audit\test_storage_task.py
+...                                                                      [100%]
+
+[0] tests\audit\test_ui_regressions.py
+.........                                                                [100%]
+
+[0] tests\audit\test_url_search.py
+........                                                                 [100%]
+
+[0] tests\phase0\test_kdbx_create_read.py
+.....                                                                    [100%]
+
+[0] tests\phase0\test_kdbx_features.py
+.....                                                                    [100%]
+
+[0] tests\phase0\test_keepassxc_interop.py
+.                                                                        [100%]
+
+[0] tests\phase0\test_pyside6_smoke.py
+.....                                                                    [100%]
+
+[0] tests\phase1\test_backup.py
+......                                                                   [100%]
+
+[0] tests\phase1\test_catalog_service.py
+..................                                                       [100%]
+
+[0] tests\phase1\test_compat_guards.py
+.....                                                                    [100%]
+
+[0] tests\phase1\test_keepassxc_regression.py
+.                                                                        [100%]
+
+[0] tests\phase1\test_models_serialization.py
+..........                                                               [100%]
+
+[0] tests\phase1\test_password_generator.py
+.........                                                                [100%]
+
+[0] tests\phase1\test_safe_save.py
+.......                                                                  [100%]
+
+[0] tests\phase1\test_vault_lifecycle.py
+.......                                                                  [100%]
+
+[0] tests\phase2\test_account_editor.py
+........                                                                 [100%]
+
+[0] tests\phase2\test_detail_panel.py
+.....                                                                    [100%]
+
+[1] tests\phase2\test_main_window.py
+...FF...                                                                 [100%]
+================================== FAILURES ===================================
+_____ test_nav_uses_unambiguous_legacy_purpose_and_hides_empty_categories _____
+
+catalog = <app.services.catalog_service.CatalogService object at 0x0000024AB55D3100>
+qapp = <PySide6.QtWidgets.QApplication(0x24ab2cba560) at 0x0000024AB66B70C0>
+
+    def test_nav_uses_unambiguous_legacy_purpose_and_hides_empty_categories(catalog, qapp):
+        from app.models import ServiceType
+        window = MainWindow(catalog)
+        research = catalog.add_service("����ƽ̨A", type=ServiceType.RESEARCH_PLATFORM)
+        window._refresh_accounts()
+        assert "������ѧ��" not in [window.nav_list.item(i).text() for i in range(window.nav_list.count())]
+        catalog.add_account(research, Account(username="research-user"))
+        catalog.save()
+        window.catalog.reopen()
+        window._refresh_accounts()
+>       row = next(i for i in range(window.nav_list.count()) if window.nav_list.item(i).text() == "������ѧ��")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests\phase2\test_main_window.py:98: StopIteration
+________________________ test_search_filters_accounts _________________________
+
+catalog = <app.services.catalog_service.CatalogService object at 0x0000024AB67BB770>
+qapp = <PySide6.QtWidgets.QApplication(0x24ab2cba560) at 0x0000024AB66B70C0>
+
+    def test_search_filters_accounts(catalog, qapp):
+        window = MainWindow(catalog)
+        service = window.catalog.catalog.services[0]
+        window.catalog.add_account(service, Account(username="other-user"))
+        window.catalog.save()
+        window.catalog.reopen()
+        window._refresh_accounts()
+        assert window.account_list.count() == 2
+    
+        window.search_edit.setText("other-user")
+>       assert window.account_list.count() == 1
+E       assert 2 == 1
+E        +  where 2 = <built-in method count of PySide6.QtWidgets.QListWidget object at 0x0000024AB6EFC8C0>()
+E        +    where <built-in method count of PySide6.QtWidgets.QListWidget object at 0x0000024AB6EFC8C0> = <PySide6.QtWidgets.QListWidget(0x24ab2cf0c00, name="accountList") at 0x0000024AB6EFC8C0>.count
+E        +      where <PySide6.QtWidgets.QListWidget(0x24ab2cf0c00, name="accountList") at 0x0000024AB6EFC8C0> = <app.ui.main_window.MainWindow(0x24ab58bc070) at 0x0000024AB6EFF640>.account_list
+
+tests\phase2\test_main_window.py:117: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/phase2/test_main_window.py::test_nav_uses_unambiguous_legacy_purpose_and_hides_empty_categories
+FAILED tests/phase2/test_main_window.py::test_search_filters_accounts - asser...
+
+[1] tests\phase2\test_purpose_categories.py
+...............F..                                                       [100%]
+================================== FAILURES ===================================
+___________ test_global_search_explicitly_crosses_selected_category ___________
+
+catalog = <app.services.catalog_service.CatalogService object at 0x000001F2EEDD2970>
+qapp = <PySide6.QtWidgets.QApplication(0x1f2ead21760) at 0x000001F2EE6CC3C0>
+
+    def test_global_search_explicitly_crosses_selected_category(catalog, qapp):
+        first = catalog.catalog.all_accounts()[0]
+        second = catalog.add_account("Separate Mail", Account(username="find-across-categories"))
+        catalog.set_custom_field(first.uuid, category_key, "�罻��ͨѶ")
+        catalog.set_custom_field(second.uuid, category_key, "����")
+        catalog.save()
+        window = MainWindow(catalog)
+        row = next(i for i in range(window.nav_list.count()) if window.nav_list.item(i).text() == "�罻��ͨѶ")
+        window.nav_list.setCurrentRow(row)
+        assert window.account_list.count() == 1
+        window.search_edit.setText("find-across-categories")
+        assert window.account_list.count() == 1
+>       assert window._selected_pair()[1].uuid == second.uuid
+E       AssertionError: assert '6fee8b01-d09...-00a6221315a4' == '711a9338-d09...-00a6221315a4'
+E         
+E         - 711a9338-d092-11f1-a7bd-00a6221315a4
+E         + 6fee8b01-d092-11f1-b934-00a6221315a4
+
+tests\phase2\test_purpose_categories.py:151: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/phase2/test_purpose_categories.py::test_global_search_explicitly_crosses_selected_category
+
+[0] tests\phase2\test_theme_clipboard.py
+...                                                                      [100%]
+
+[0] tests\phase2\test_unlock_dialog.py
+......                                                                   [100%]
+
+[0] tests\phase2\test_workspace_design.py
+..........                                                               [100%]
+
+[0] tests\phase3\test_phase3_ui.py
+.........                                                                [100%]
+
+[0] tests\phase3\test_search_service.py
+...........                                                              [100%]
+
+[0] tests\phase4\test_no_secret_leakage.py
+...                                                                      [100%]
+
+Totals: 220 passed, 3 failed, 0 errors, 0 skipped
+Nonzero module exits: 2

@@ -1,0 +1,2 @@
+# Never publish local release artifacts or password vaults.
+/release/

@@ -1,0 +1,136 @@
+Accnary pytest modules: 32
+[2026-10-25 23:54:20] 并行任务统计报告
+- 平台环境：WINDOWS (process模式)
+- 资源使用：20个工作进程 | 分块大小1
+- 任务统计：总计32个任务 | 完成32个
+- 时间统计：总耗时264.367秒
+- 内存估算：0.185 GiB/worker
+- 吞吐性能：0.1 任务/秒
+
+[0] tests\audit\test_backup_ui.py
+..                                                                       [100%]
+2 passed in 5.84s
+
+[0] tests\audit\test_build_workflow.py
+....                                                                     [100%]
+4 passed in 0.55s
+
+[0] tests\audit\test_complex_account.py
+..                                                                       [100%]
+2 passed in 86.89s (0:01:26)
+
+[0] tests\audit\test_default_vault_path.py
+....                                                                     [100%]
+4 passed in 1.56s
+
+[0] tests\audit\test_model_regressions.py
+.......                                                                  [100%]
+7 passed in 175.63s (0:02:55)
+
+[0] tests\audit\test_runtime.py
+........                                                                 [100%]
+8 passed in 146.83s (0:02:26)
+
+[0] tests\audit\test_storage_regressions.py
+................                                                         [100%]
+16 passed in 254.41s (0:04:14)
+
+[0] tests\audit\test_storage_task.py
+...                                                                      [100%]
+3 passed in 2.19s
+
+[0] tests\audit\test_ui_regressions.py
+.........                                                                [100%]
+9 passed in 163.11s (0:02:43)
+
+[0] tests\audit\test_url_search.py
+........                                                                 [100%]
+8 passed in 0.52s
+
+[0] tests\phase0\test_kdbx_create_read.py
+.....                                                                    [100%]
+5 passed in 58.47s
+
+[0] tests\phase0\test_kdbx_features.py
+.....                                                                    [100%]
+5 passed in 72.49s (0:01:12)
+
+[0] tests\phase0\test_keepassxc_interop.py
+.                                                                        [100%]
+1 passed in 20.04s
+
+[0] tests\phase0\test_pyside6_smoke.py
+.....                                                                    [100%]
+5 passed in 0.60s
+
+[0] tests\phase1\test_backup.py
+......                                                                   [100%]
+6 passed in 171.03s (0:02:51)
+
+[0] tests\phase1\test_catalog_service.py
+..................                                                       [100%]
+18 passed in 246.83s (0:04:06)
+
+[0] tests\phase1\test_compat_guards.py
+.....                                                                    [100%]
+5 passed in 118.80s (0:01:58)
+
+[0] tests\phase1\test_keepassxc_regression.py
+.                                                                        [100%]
+1 passed in 37.85s
+
+[0] tests\phase1\test_models_serialization.py
+..........                                                               [100%]
+10 passed in 0.21s
+
+[0] tests\phase1\test_password_generator.py
+.........                                                                [100%]
+9 passed in 0.25s
+
+[0] tests\phase1\test_safe_save.py
+.......                                                                  [100%]
+7 passed in 175.24s (0:02:55)
+
+[0] tests\phase1\test_vault_lifecycle.py
+.......                                                                  [100%]
+7 passed in 89.57s (0:01:29)
+
+[0] tests\phase2\test_account_editor.py
+........                                                                 [100%]
+8 passed in 174.66s (0:02:54)
+
+[0] tests\phase2\test_detail_panel.py
+.....                                                                    [100%]
+5 passed in 111.22s (0:01:51)
+
+[0] tests\phase2\test_main_window.py
+........                                                                 [100%]
+8 passed in 183.64s (0:03:03)
+
+[0] tests\phase2\test_purpose_categories.py
+..................                                                       [100%]
+18 passed in 208.73s (0:03:28)
+
+[0] tests\phase2\test_theme_clipboard.py
+...                                                                      [100%]
+3 passed in 1.15s
+
+[0] tests\phase2\test_unlock_dialog.py
+......                                                                   [100%]
+6 passed in 72.82s (0:01:12)
+
+[0] tests\phase2\test_workspace_design.py
+..........                                                               [100%]
+10 passed in 165.13s (0:02:45)
+
+[0] tests\phase3\test_phase3_ui.py
+.........                                                                [100%]
+9 passed in 137.44s (0:02:17)
+
+[0] tests\phase3\test_search_service.py
+...........                                                              [100%]
+11 passed in 196.70s (0:03:16)
+
+[0] tests\phase4\test_no_secret_leakage.py
+...                                                                      [100%]
+3 passed in 78.34s (0:01:18)

@@ -1,0 +1,35 @@
+Accnary full test suite via Pex: 33 independent test modules
+tests\audit\test_backup_ui.py: exit=0; ============================= 2 passed in 18.97s ==============================
+tests\audit\test_build_workflow.py: exit=0; ============================== 4 passed in 0.49s ==============================
+tests\audit\test_complex_account.py: exit=0; ======================== 2 passed in 87.24s (0:01:27) =========================
+tests\audit\test_default_vault_path.py: exit=0; ============================== 4 passed in 1.31s ==============================
+tests\audit\test_iteration_polish.py: exit=0; ======================= 14 passed in 170.98s (0:02:50) ========================
+tests\audit\test_model_regressions.py: exit=0; ======================== 7 passed in 182.24s (0:03:02) ========================
+tests\audit\test_runtime.py: exit=0; ======================== 8 passed in 151.80s (0:02:31) ========================
+tests\audit\test_storage_regressions.py: exit=0; ======================= 16 passed in 280.96s (0:04:40) ========================
+tests\audit\test_storage_task.py: exit=0; ============================== 3 passed in 2.58s ==============================
+tests\audit\test_ui_regressions.py: exit=0; ======================== 9 passed in 167.86s (0:02:47) ========================
+tests\audit\test_url_search.py: exit=0; ============================== 8 passed in 0.75s ==============================
+tests\phase0\test_kdbx_create_read.py: exit=0; ======================== 5 passed in 60.02s (0:01:00) =========================
+tests\phase0\test_kdbx_features.py: exit=0; ======================== 5 passed in 72.19s (0:01:12) =========================
+tests\phase0\test_keepassxc_interop.py: exit=0; ============================= 1 passed in 20.14s ==============================
+tests\phase0\test_pyside6_smoke.py: exit=0; ============================== 5 passed in 0.34s ==============================
+tests\phase1\test_backup.py: exit=0; ======================== 6 passed in 179.94s (0:02:59) ========================
+tests\phase1\test_catalog_service.py: exit=0; ======================= 18 passed in 274.39s (0:04:34) ========================
+tests\phase1\test_compat_guards.py: exit=0; ======================== 5 passed in 121.11s (0:02:01) ========================
+tests\phase1\test_keepassxc_regression.py: exit=0; ============================= 1 passed in 33.79s ==============================
+tests\phase1\test_models_serialization.py: exit=0; ============================= 10 passed in 0.17s ==============================
+tests\phase1\test_password_generator.py: exit=0; ============================== 9 passed in 0.20s ==============================
+tests\phase1\test_safe_save.py: exit=0; ======================== 7 passed in 178.05s (0:02:58) ========================
+tests\phase1\test_vault_lifecycle.py: exit=0; ======================== 7 passed in 92.68s (0:01:32) =========================
+tests\phase2\test_account_editor.py: exit=0; ======================== 8 passed in 184.45s (0:03:04) ========================
+tests\phase2\test_detail_panel.py: exit=0; ======================== 5 passed in 116.39s (0:01:56) ========================
+tests\phase2\test_main_window.py: exit=0; ======================== 8 passed in 208.75s (0:03:28) ========================
+tests\phase2\test_purpose_categories.py: exit=0; ======================= 18 passed in 234.64s (0:03:54) ========================
+tests\phase2\test_theme_clipboard.py: exit=0; ============================== 3 passed in 1.31s ==============================
+tests\phase2\test_unlock_dialog.py: exit=0; ======================== 6 passed in 74.93s (0:01:14) =========================
+tests\phase2\test_workspace_design.py: exit=0; ======================= 10 passed in 185.96s (0:03:05) ========================
+tests\phase3\test_phase3_ui.py: exit=0; ======================== 9 passed in 138.53s (0:02:18) ========================
+tests\phase3\test_search_service.py: exit=0; ======================= 11 passed in 201.44s (0:03:21) ========================
+tests\phase4\test_no_secret_leakage.py: exit=0; ======================== 3 passed in 80.93s (0:01:20) =========================
+Total passed: 237; failing modules: 0

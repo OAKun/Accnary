@@ -1,0 +1,68 @@
+Accnary full test suite via Pex: 33 independent test modules
+tests\audit\test_backup_ui.py: exit=0; no pytest summary
+tests\audit\test_build_workflow.py: exit=0; no pytest summary
+tests\audit\test_complex_account.py: exit=0; no pytest summary
+tests\audit\test_default_vault_path.py: exit=0; no pytest summary
+tests\audit\test_iteration_polish.py: exit=0; no pytest summary
+tests\audit\test_model_regressions.py: exit=0; no pytest summary
+tests\audit\test_runtime.py: exit=0; no pytest summary
+tests\audit\test_storage_regressions.py: exit=0; no pytest summary
+tests\audit\test_storage_task.py: exit=0; no pytest summary
+tests\audit\test_ui_regressions.py: exit=0; no pytest summary
+tests\audit\test_url_search.py: exit=1; no pytest summary
+--- stdout ---
+....F...                                                                 [100%]
+================================== FAILURES ===================================
+____ test_long_url_or_fragment_finds_saved_website[example.invalid/portal] ____
+
+query = 'example.invalid/portal'
+
+    @pytest.mark.parametrize("query", [
+        "research.example.invalid/data/archive/2026?download=1#details",
+        "https://research.example.invalid/data/archive/2026?download=1#details",
+        "http://www.research.example.invalid/a/very/long/path?one=1&two=2",
+        "research.example.invalid",
+        "example.invalid/portal",
+        "/portal/login",
+        "https://idp.other.invalid/auth?redirect_uri=https%3A%2F%2Fresearch.example.invalid%2Fportal%2Flogin",
+    ])
+    def test_long_url_or_fragment_finds_saved_website(query):
+        index = SearchIndex()
+        service = Service(name="Research", urls=["https://research.example.invalid/portal/login"],
+                          accounts=[Account(uuid="expected", username="researcher")])
+        unrelated = Service(name="Other", urls=["https://different.example.invalid/"],
+                            accounts=[Account(uuid="unrelated", username="other")])
+        index.build(Catalog(services=[service, unrelated]))
+>       assert index.search(query)[0].account.uuid == "expected"
+E       AssertionError: assert 'unrelated' == 'expected'
+E         
+E         - expected
+E         + unrelated
+
+tests\audit\test_url_search.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/audit/test_url_search.py::test_long_url_or_fragment_finds_saved_website[example.invalid/portal]
+--- stderr ---
+tests\phase0\test_kdbx_create_read.py: exit=0; no pytest summary
+tests\phase0\test_kdbx_features.py: exit=0; no pytest summary
+tests\phase0\test_keepassxc_interop.py: exit=0; no pytest summary
+tests\phase0\test_pyside6_smoke.py: exit=0; no pytest summary
+tests\phase1\test_backup.py: exit=0; no pytest summary
+tests\phase1\test_catalog_service.py: exit=0; no pytest summary
+tests\phase1\test_compat_guards.py: exit=0; no pytest summary
+tests\phase1\test_keepassxc_regression.py: exit=0; no pytest summary
+tests\phase1\test_models_serialization.py: exit=0; no pytest summary
+tests\phase1\test_password_generator.py: exit=0; no pytest summary
+tests\phase1\test_safe_save.py: exit=0; no pytest summary
+tests\phase1\test_vault_lifecycle.py: exit=0; no pytest summary
+tests\phase2\test_account_editor.py: exit=0; no pytest summary
+tests\phase2\test_detail_panel.py: exit=0; no pytest summary
+tests\phase2\test_main_window.py: exit=0; no pytest summary
+tests\phase2\test_purpose_categories.py: exit=0; no pytest summary
+tests\phase2\test_theme_clipboard.py: exit=0; no pytest summary
+tests\phase2\test_unlock_dialog.py: exit=0; no pytest summary
+tests\phase2\test_workspace_design.py: exit=0; no pytest summary
+tests\phase3\test_phase3_ui.py: exit=0; no pytest summary
+tests\phase3\test_search_service.py: exit=0; no pytest summary
+tests\phase4\test_no_secret_leakage.py: exit=0; no pytest summary
+Quiet mode omitted pass counts; 32 modules exited 0; failing module: tests\audit\test_url_search.py (7 passed, 1 failed).

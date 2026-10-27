@@ -1,0 +1,104 @@
+Accnary full test suite via Pex: 33 independent modules
+Each module used an isolated QSettings directory and pytest basetemp.
+
+tests/audit/test_backup_ui.py: exit=0
+  ..                                                                       [100%]
+  2 passed in 6.47s
+tests/audit/test_build_workflow.py: exit=0
+  ....                                                                     [100%]
+  4 passed in 0.20s
+tests/audit/test_complex_account.py: exit=0
+  ..                                                                       [100%]
+  2 passed in 89.43s (0:01:29)
+tests/audit/test_default_vault_path.py: exit=0
+  ....                                                                     [100%]
+  4 passed in 1.29s
+tests/audit/test_iteration_polish.py: exit=0
+  ..............                                                           [100%]
+  14 passed in 172.09s (0:02:52)
+tests/audit/test_model_regressions.py: exit=0
+  .......                                                                  [100%]
+  7 passed in 186.02s (0:03:06)
+tests/audit/test_runtime.py: exit=0
+  ..........                                                               [100%]
+  10 passed in 191.89s (0:03:11)
+tests/audit/test_storage_regressions.py: exit=0
+  ................                                                         [100%]
+  16 passed in 266.71s (0:04:26)
+tests/audit/test_storage_task.py: exit=0
+  ...                                                                      [100%]
+  3 passed in 1.46s
+tests/audit/test_ui_regressions.py: exit=0
+  .........                                                                [100%]
+  9 passed in 169.61s (0:02:49)
+tests/audit/test_url_search.py: exit=0
+  ........                                                                 [100%]
+  8 passed in 0.59s
+tests/phase0/test_kdbx_create_read.py: exit=0
+  .....                                                                    [100%]
+  5 passed in 59.88s
+tests/phase0/test_kdbx_features.py: exit=0
+  .....                                                                    [100%]
+  5 passed in 74.30s (0:01:14)
+tests/phase0/test_keepassxc_interop.py: exit=0
+  .                                                                        [100%]
+  1 passed in 20.17s
+tests/phase0/test_pyside6_smoke.py: exit=0
+  .....                                                                    [100%]
+  5 passed in 0.38s
+tests/phase1/test_backup.py: exit=0
+  ......                                                                   [100%]
+  6 passed in 181.45s (0:03:01)
+tests/phase1/test_catalog_service.py: exit=0
+  ..................                                                       [100%]
+  18 passed in 259.40s (0:04:19)
+tests/phase1/test_compat_guards.py: exit=0
+  .....                                                                    [100%]
+  5 passed in 121.98s (0:02:01)
+tests/phase1/test_keepassxc_regression.py: exit=0
+  .                                                                        [100%]
+  1 passed in 36.18s
+tests/phase1/test_models_serialization.py: exit=0
+  ..........                                                               [100%]
+  10 passed in 0.20s
+tests/phase1/test_password_generator.py: exit=0
+  .........                                                                [100%]
+  9 passed in 0.18s
+tests/phase1/test_safe_save.py: exit=0
+  .......                                                                  [100%]
+  7 passed in 181.86s (0:03:01)
+tests/phase1/test_vault_lifecycle.py: exit=0
+  .......                                                                  [100%]
+  7 passed in 93.05s (0:01:33)
+tests/phase2/test_account_editor.py: exit=0
+  ........                                                                 [100%]
+  8 passed in 187.94s (0:03:07)
+tests/phase2/test_detail_panel.py: exit=0
+  .....                                                                    [100%]
+  5 passed in 116.93s (0:01:56)
+tests/phase2/test_main_window.py: exit=0
+  ........                                                                 [100%]
+  8 passed in 197.51s (0:03:17)
+tests/phase2/test_purpose_categories.py: exit=0
+  ..................                                                       [100%]
+  18 passed in 221.47s (0:03:41)
+tests/phase2/test_theme_clipboard.py: exit=0
+  ...                                                                      [100%]
+  3 passed in 0.98s
+tests/phase2/test_unlock_dialog.py: exit=0
+  ......                                                                   [100%]
+  6 passed in 73.31s (0:01:13)
+tests/phase2/test_workspace_design.py: exit=0
+  ..........                                                               [100%]
+  10 passed in 178.20s (0:02:58)
+tests/phase3/test_phase3_ui.py: exit=0
+  .........                                                                [100%]
+  9 passed in 139.52s (0:02:19)
+tests/phase3/test_search_service.py: exit=0
+  ...........                                                              [100%]
+  11 passed in 189.28s (0:03:09)
+tests/phase4/test_no_secret_leakage.py: exit=0
+  ...                                                                      [100%]
+  3 passed in 80.62s (0:01:20)
+
+Totals: 239 passed, 0 failed, 0 errors, 0 skipped

@@ -1,0 +1,17 @@
+[project]
+name = "accnary"
+version = "0.1.0"
+description = "Accnary - Windows personal account & credential manager with local KDBX storage"
+license = "GPL-3.0-only"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6-Essentials>=6.9",
+    "pykeepass>=4.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

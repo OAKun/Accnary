@@ -1,0 +1,29 @@
+# Virtual environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Password databases must never be committed - the real vault stays out of git
+*.kdbx
+*.kdbx.lock
+*.kdbx.bak
+*.bak
+*.key
+*.keyx
+.env
+.env.*
+!.env.example
+audit/
+
+# Local verification tools (KeePassXC portable build - not a runtime dependency)
+/tools/
+
+# Build outputs
+build/
+dist/
+*.spec.bak
+.gui-shots/
+assets/app-icon.ico

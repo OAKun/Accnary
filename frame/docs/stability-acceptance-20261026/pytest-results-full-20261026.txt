@@ -1,0 +1,102 @@
+# Accnary isolated full regression
+Modules: 32
+Each module ran in a separate Pex task with isolated QSettings and pytest temporary data.
+
+[0] tests\audit\test_backup_ui.py
+..                                                                       [100%]
+
+[0] tests\audit\test_build_workflow.py
+....                                                                     [100%]
+
+[0] tests\audit\test_complex_account.py
+..                                                                       [100%]
+
+[0] tests\audit\test_default_vault_path.py
+....                                                                     [100%]
+
+[0] tests\audit\test_model_regressions.py
+.......                                                                  [100%]
+
+[0] tests\audit\test_runtime.py
+........                                                                 [100%]
+
+[0] tests\audit\test_storage_regressions.py
+................                                                         [100%]
+
+[0] tests\audit\test_storage_task.py
+...                                                                      [100%]
+
+[0] tests\audit\test_ui_regressions.py
+.........                                                                [100%]
+
+[0] tests\audit\test_url_search.py
+........                                                                 [100%]
+
+[0] tests\phase0\test_kdbx_create_read.py
+.....                                                                    [100%]
+
+[0] tests\phase0\test_kdbx_features.py
+.....                                                                    [100%]
+
+[0] tests\phase0\test_keepassxc_interop.py
+.                                                                        [100%]
+
+[0] tests\phase0\test_pyside6_smoke.py
+.....                                                                    [100%]
+
+[0] tests\phase1\test_backup.py
+......                                                                   [100%]
+
+[0] tests\phase1\test_catalog_service.py
+..................                                                       [100%]
+
+[0] tests\phase1\test_compat_guards.py
+.....                                                                    [100%]
+
+[0] tests\phase1\test_keepassxc_regression.py
+.                                                                        [100%]
+
+[0] tests\phase1\test_models_serialization.py
+..........                                                               [100%]
+
+[0] tests\phase1\test_password_generator.py
+.........                                                                [100%]
+
+[0] tests\phase1\test_safe_save.py
+.......                                                                  [100%]
+
+[0] tests\phase1\test_vault_lifecycle.py
+.......                                                                  [100%]
+
+[0] tests\phase2\test_account_editor.py
+........                                                                 [100%]
+
+[0] tests\phase2\test_detail_panel.py
+.....                                                                    [100%]
+
+[0] tests\phase2\test_main_window.py
+........                                                                 [100%]
+
+[0] tests\phase2\test_purpose_categories.py
+..................                                                       [100%]
+
+[0] tests\phase2\test_theme_clipboard.py
+...                                                                      [100%]
+
+[0] tests\phase2\test_unlock_dialog.py
+......                                                                   [100%]
+
+[0] tests\phase2\test_workspace_design.py
+..........                                                               [100%]
+
+[0] tests\phase3\test_phase3_ui.py
+.........                                                                [100%]
+
+[0] tests\phase3\test_search_service.py
+...........                                                              [100%]
+
+[0] tests\phase4\test_no_secret_leakage.py
+...                                                                      [100%]
+
+Totals: 223 passed, 0 failed, 0 errors, 0 skipped
+Nonzero module exits: 0
