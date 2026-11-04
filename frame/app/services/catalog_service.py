@@ -561,14 +561,20 @@ class CatalogService:
             self._service_groups_by_uuid[str(group.uuid)] = group
             self._service_groups_by_name.setdefault(group.name, group)
         self._validate_custom_keys(account)
-        entry = self._vault.kp.add_entry(
-            group,
-            service.name,
-            username=account.username,
-            password=account.password,
-            url=account.primary_url,
-            notes=account.notes,
-        )
+        try:
+            entry = self._vault.kp.add_entry(
+                group,
+                service.name,
+                username=account.username,
+                password=account.password,
+                url=account.primary_url,
+                notes=account.notes,
+            )
+        except Exception as exc:
+            # PyKeePass 4.2 raises a plain Exception for this specific conflict.
+            if type(exc) is not Exception or str(exc) != f'An entry "{service.name}" already exists in "{group}"':
+                raise
+            raise CatalogError("此平台已有相同用户名的账户。请修改用户名，或编辑已有账户。") from exc
         account.uuid = str(entry.uuid)
         self._entries_by_uuid[account.uuid] = entry
         for field in account.custom_fields:

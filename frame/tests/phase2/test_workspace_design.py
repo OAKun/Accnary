@@ -38,6 +38,22 @@ def test_compact_header_and_more_menu_keep_utilities_reachable(catalog, qapp, mo
     window.close()
 
 
+def test_list_header_and_alias_layout(catalog, qapp):
+    window = MainWindow(catalog)
+    window.resize(700, 560)
+    window.show()
+    qapp.processEvents()
+    service = catalog.catalog.services[0]
+    account = service.accounts[0]
+    title, subtitle, _, _ = window.account_list.item(0).data(summary_role)
+    assert title == account.alias
+    assert subtitle == f"{service.name} · {account.username}"
+    assert abs(window.search_edit.geometry().center().y() - window.new_button.geometry().center().y()) <= 1
+    assert abs(window.list_title.geometry().center().y() - window.sort_combo.geometry().center().y()) <= 1
+    assert window.search_edit.geometry().right() < window.new_button.geometry().left()
+    window.close()
+
+
 def test_many_rows_use_one_delegate_without_per_record_widgets(catalog, qapp):
     service = catalog.catalog.services[0]
     service.accounts.extend(Account(uuid=f"virtual-{i}", alias="虚构", username=f"user-{i}", password="do-not-display")

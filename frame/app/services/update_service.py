@@ -38,6 +38,7 @@ manifest_url_fallback = (
 )
 manifest_urls: list[str] = [manifest_url, manifest_url_fallback]
 manifest_urls_env_name = "ACCNARY_UPDATE_MANIFEST_URLS"
+_manifest_max_bytes = 1024 * 1024
 
 # 自动检查节流：24 小时最多一次；手动检查（manual=True）不受此限制。
 auto_check_interval = timedelta(hours=24)
@@ -227,11 +228,17 @@ class UpdateChecker(QObject):
             last = datetime.fromisoformat(last_text)
         except ValueError:
             return True
-        return datetime.now() - last >= auto_check_interval
+        # Legacy settings use local time without an offset. New timestamps
+        # retain their offset; compare within that same timezone.
+        elapsed = datetime.now(last.tzinfo) - last
+        return elapsed < timedelta(0) or elapsed >= auto_check_interval
 
     def _mark_check_completed(self) -> None:
         settings = self._settings()
-        settings.setValue(_last_check_key, datetime.now().isoformat(timespec="seconds"))
+        settings.setValue(
+            _last_check_key,
+            datetime.now().astimezone().isoformat(timespec="seconds"),
+        )
 
     def _build_sources(self) -> list[UpdateSource]:
         sources: list[UpdateSource] = []
@@ -267,13 +274,20 @@ class UpdateChecker(QObject):
         _configure_redirects(request)
 
         reply = self.manager.get(request)
+        # Leave one extra byte to distinguish the limit from an oversized body.
+        reply.setReadBufferSize(_manifest_max_bytes + 1)
+        oversized = False
+
+        def abort_oversized() -> None:
+            nonlocal oversized
+            if reply.bytesAvailable() > _manifest_max_bytes:
+                oversized = True
+                reply.abort()
+
         reply.finished.connect(
-            lambda reply=reply, source=source, generation=generation: self._handle_reply(
-                reply,
-                source,
-                generation,
-            )
+            lambda: self._handle_reply(reply, source, generation, oversized)
         )
+        reply.readyRead.connect(abort_oversized)
 
     def _record_error(self, source: UpdateSource, message: str) -> None:
         self._errors.append(f"[{source.name}] {message}")
@@ -287,13 +301,17 @@ class UpdateChecker(QObject):
         reply: QNetworkReply,
         source: UpdateSource,
         generation: int,
+        oversized: bool,
     ) -> None:
         try:
             if generation != self._check_generation:
                 return
+            if oversized or reply.bytesAvailable() > _manifest_max_bytes:
+                self._record_error(source, "更新清单超过 1 MiB")
+                self._try_next_source(generation)
+                return
             status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
             error = reply.error()
-            raw = bytes(reply.readAll())
 
             if error != QNetworkReply.NetworkError.NoError:
                 self._record_error(
@@ -303,6 +321,7 @@ class UpdateChecker(QObject):
                 self._try_next_source(generation)
                 return
 
+            raw = bytes(reply.read(_manifest_max_bytes))
             if isinstance(status, int) and status >= 400:
                 preview = raw[:300].decode("utf-8", errors="replace")
                 self._record_error(source, f"HTTP={status}, 返回内容预览={preview!r}")
@@ -485,7 +504,8 @@ class UpdateDownloader(QObject):
         if cancelled:
             self.cancelled.emit()
         elif error_message:
-            destination.unlink(missing_ok=True)
+            # QSaveFile discards its staged file on failure. The destination
+            # may be a pre-existing valid download and must remain intact.
             self.failed.emit(error_message)
         else:
             self.completed.emit(completed_path)

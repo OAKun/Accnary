@@ -96,7 +96,9 @@ def restore_from_backup(
                 raise BackupError("restore target changed during validation")
             if target.exists():
                 safety = target.with_name(target.name + ".pre-restore.bak")
-                copy_snapshot(target, safety)
+                if before_hash is None:
+                    raise BackupError("restore target changed before its safety snapshot")
+                copy_snapshot(target, safety, expected_sha256=before_hash)
             if file_sha256(target) != before_hash:
                 raise BackupError("restore target changed before replacement")
             os.replace(tmp, target)

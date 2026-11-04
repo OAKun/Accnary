@@ -17,16 +17,19 @@ from app.ui import theme
 def test_theme_light_and_dark_apply(qapp):
     theme.apply_theme(qapp, "light")
     light = qapp.styleSheet()
-    assert light and "#f5f7fa" in light
-    assert "#ebf2ff" in light and "#2f68d5" in light
+    for role in ("sidebar", "selected", "accent", "credential_bg"):
+        assert theme.PALETTES["light"][role] in light
     assert "@" not in light
 
     theme.apply_theme(qapp, "dark")
     dark = qapp.styleSheet()
-    assert "#181f2b" in dark and dark != light
+    assert dark != light
+    for role in ("sidebar", "selected", "accent", "credential_bg"):
+        assert theme.PALETTES["dark"][role] in dark
+    assert "@" not in dark
 
     theme.apply_theme(qapp, "light")  # restore for other tests
-    assert "#f5f7fa" in qapp.styleSheet()
+    assert qapp.styleSheet() == light
 
 
 def test_theme_toggle_flips(qapp):

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
     QDialog,
     QFrame,
@@ -66,17 +67,73 @@ class Card(QFrame):
         self._layout.addLayout(layout)
 
 
-class CopyRow(QWidget):
+class _DetailValueRow(QWidget):
+    """Stack the field name above its value when the detail column is narrow."""
+
+    def _layout_value_row(self, key: QLabel, *buttons: QToolButton) -> None:
+        self._copy_feedback_timer: QTimer | None = None
+        self._copy_action_name = self.copy_btn.accessibleName()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        self._value_layout = QHBoxLayout()
+        self._value_layout.setContentsMargins(0, 0, 0, 0)
+        key.setMinimumWidth(64)
+        key.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        self._value_layout.addWidget(key)
+        self._value_layout.addWidget(self.value_label, 1)
+        layout.addLayout(self._value_layout, 1)
+        for button in buttons:
+            layout.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
+        self._compact_value = None
+        self._update_value_layout(self.width())
+
+    def _copy(self) -> None:
+        if not self._value:
+            return
+        copy_with_auto_clear(self._value)
+        if self._copy_feedback_timer is None:
+            self._copy_feedback_timer = QTimer(self)
+            self._copy_feedback_timer.setSingleShot(True)
+            self._copy_feedback_timer.timeout.connect(self._reset_copy_feedback)
+        self.copy_btn.setIcon(icons.line_icon("check", theme.PALETTES[theme.current_theme()]["accent"]))
+        self.copy_btn.setToolTip("已复制")
+        self.copy_btn.setAccessibleName(f"{self._copy_action_name}（已复制）")
+        self._copy_feedback_timer.start(1400)
+        if self._on_copied is not None:
+            self._on_copied()
+
+    def _reset_copy_feedback(self) -> None:
+        if self._copy_feedback_timer is None:
+            return
+        self._copy_feedback_timer.stop()
+        self.copy_btn.setIcon(icons.line_icon("copy", theme.PALETTES[theme.current_theme()]["muted"]))
+        self.copy_btn.setToolTip(self._copy_action_name)
+        self.copy_btn.setAccessibleName(self._copy_action_name)
+
+    def _update_value_layout(self, width: int) -> None:
+        compact = width < 280
+        if compact == self._compact_value:
+            return
+        self._compact_value = compact
+        self._value_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        )
+        self._value_layout.setSpacing(3 if compact else 8)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        if hasattr(self, "_value_layout"):
+            self._update_value_layout(event.size().width())
+
+
+class CopyRow(_DetailValueRow):
     """Label + (copyable) value + 复制 button, for non-secret values."""
 
     def __init__(self, label: str, value: str = "", parent=None, on_copied: Callable[[], None] | None = None):
         super().__init__(parent)
         self._on_copied = on_copied
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
         key = _muted_label(label)
-        key.setFixedWidth(64)
         self.value_label = QLabel(value)
         self.value_label.setTextFormat(Qt.TextFormat.PlainText)
         self.value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -92,34 +149,23 @@ class CopyRow(QWidget):
         self.copy_btn.setAutoRaise(True)
         self.copy_btn.setFixedSize(32, 32)
         self.copy_btn.clicked.connect(self._copy)
-        layout.addWidget(key)
-        layout.addWidget(self.value_label, 1)
-        layout.addWidget(self.copy_btn)
+        self._layout_value_row(key, self.copy_btn)
         self.copy_btn.setVisible(bool(value))
         self._value = value
 
     def set_value(self, value: str) -> None:
+        self._reset_copy_feedback()
         self._value = value
         self.value_label.setText(value)
         self.copy_btn.setVisible(bool(value))
 
-    def _copy(self) -> None:
-        copy_with_auto_clear(self._value)
-        if self._on_copied is not None:
-            self._on_copied()
-
-
-class SecretRow(QWidget):
+class SecretRow(_DetailValueRow):
     """Label + masked secret + 显示/隐藏 + 复制."""
 
     def __init__(self, label: str, value: str = "", parent=None, on_copied: Callable[[], None] | None = None):
         super().__init__(parent)
         self._on_copied = on_copied
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
         key = _muted_label(label)
-        key.setFixedWidth(48)
         self.value_label = QLabel(MASK if value else "未填写")
         self.value_label.setTextFormat(Qt.TextFormat.PlainText)
         self.value_label.setWordWrap(True)
@@ -145,13 +191,11 @@ class SecretRow(QWidget):
         self.copy_btn.setAutoRaise(True)
         self.copy_btn.setFixedSize(32, 32)
         self.copy_btn.clicked.connect(self._copy)
-        layout.addWidget(key)
-        layout.addWidget(self.value_label, 1)
-        layout.addWidget(self.toggle_btn)
-        layout.addWidget(self.copy_btn)
+        self._layout_value_row(key, self.toggle_btn, self.copy_btn)
         self.set_value(value)
 
     def set_value(self, value: str) -> None:
+        self._reset_copy_feedback()
         self._value = value or ""
         self._revealed = False
         self.value_label.setText(MASK if self._value else "未填写")
@@ -169,11 +213,6 @@ class SecretRow(QWidget):
         self.toggle_btn.setIcon(icons.line_icon(icon_name, theme.PALETTES[theme.current_theme()]["muted"]))
         self.toggle_btn.setToolTip(f"{action}{self._label}")
         self.toggle_btn.setAccessibleName(f"{action}{self._label}")
-
-    def _copy(self) -> None:
-        copy_with_auto_clear(self._value)
-        if self._on_copied is not None:
-            self._on_copied()
 
     def clear_sensitive(self) -> None:
         self._on_copied = None

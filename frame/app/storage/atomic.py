@@ -5,6 +5,7 @@
 # @Python    : 3.14.9
 # @Description: Windows advisory writer lock and same-directory encrypted staging helpers.
 from contextlib import contextmanager
+import hashlib
 import msvcrt
 import os
 from pathlib import Path
@@ -52,15 +53,39 @@ def flush_file(path: Path) -> None:
         os.fsync(handle.fileno())
 
 
-def copy_snapshot(source: Path, destination: Path) -> None:
-    """A failed copy/replace must preserve the previous backup too."""
+def copy_snapshot(
+    source: Path,
+    destination: Path,
+    *,
+    expected_sha256: str,
+) -> None:
+    """Atomically copy one known encrypted-file version to a snapshot.
+
+    Hash the source while copying, then verify the staged bytes independently.
+    The caller checks the source again before committing its main operation.
+    """
     tmp = temporary_path(destination)
     try:
-        shutil.copy2(source, tmp)
-        flush_file(tmp)
-        # Verify the actual byte copy, independently of KDBX parsing.
-        from app.storage.vault import file_sha256
-        if file_sha256(tmp) != file_sha256(source):
+        source_digest = hashlib.sha256()
+        with source.open("rb") as source_handle, tmp.open("wb") as target_handle:
+            for chunk in iter(lambda: source_handle.read(1024 * 1024), b""):
+                source_digest.update(chunk)
+                target_handle.write(chunk)
+            target_handle.flush()
+            os.fsync(target_handle.fileno())
+
+        if source_digest.hexdigest() != expected_sha256:
+            raise ConflictError(
+                "vault file changed while its safety snapshot was being copied; "
+                "reload before saving"
+            )
+
+        shutil.copystat(source, tmp)
+        snapshot_digest = hashlib.sha256()
+        with tmp.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                snapshot_digest.update(chunk)
+        if snapshot_digest.hexdigest() != expected_sha256:
             raise OSError("encrypted snapshot changed during copying")
         os.replace(tmp, destination)
     finally:

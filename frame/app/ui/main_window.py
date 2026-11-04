@@ -24,6 +24,7 @@ import sys
 import time
 
 from PySide6.QtCore import (
+    QSignalBlocker,
     QAbstractNativeEventFilter,
     QEvent,
     QSize,
@@ -84,6 +85,8 @@ WTS_SESSION_LOCK = 0x0007
 WM_POWERBROADCAST = 0x0218
 PBT_APMSUSPEND = 0x0004
 _SEARCH_RESULT_LIMIT = 50
+_SINGLE_PANE_WIDTH = 820  # 180 navigation + 310 list + 320 detail + handles
+_DESKTOP_WIDTH = 1000
 
 
 class _SessionSignals(QObject):
@@ -183,7 +186,10 @@ class MainWindow(QMainWindow):
         self._nav_open = False
         self._mobile_detail = False
         self._responsive_signature = None
+        self._before_search: tuple[str, str | None, int] | None = None
+        self._visible_account_keys = None
         self._desktop_splitter_sizes: list[int] | None = None
+        self._desktop_splitter_state = None
         self._pending_splitter_state = None
         self._build_header()
         self._build_central()
@@ -199,25 +205,13 @@ class MainWindow(QMainWindow):
     def _build_header(self) -> None:
         self.app_header = QWidget()
         self.app_header.setObjectName("appHeader")
-        self.app_header.setFixedHeight(64)
+        self.app_header.setFixedHeight(44)
         header = QHBoxLayout(self.app_header)
-        header.setContentsMargins(22, 0, 18, 0)
-        header.setSpacing(12)
-
-        logo = QLabel()
-        logo.setPixmap(icons.app_icon().pixmap(26, 26))
-        header.addWidget(logo)
-        brand = QLabel("Accnary")
-        brand.setProperty("brand", True)
-        header.addWidget(brand)
-        separator = QWidget()
-        separator.setObjectName("headerSeparator")
-        separator.setFixedSize(1, 24)
-        header.addWidget(separator)
-        self.vault_label = QLabel()
-        self.vault_label.setObjectName("vaultLabel")
-        self.vault_label.setTextFormat(Qt.TextFormat.PlainText)
-        header.addWidget(self.vault_label)
+        header.setContentsMargins(16, 0, 12, 0)
+        header.setSpacing(6)
+        context = QLabel("本地密码库")
+        context.setObjectName("workspaceContext")
+        header.addWidget(context)
         header.addStretch(1)
 
         self.nav_button = QToolButton()
@@ -324,7 +318,7 @@ class MainWindow(QMainWindow):
         self.app_header.update()
 
     def _focus_search(self) -> None:
-        if self.width() < 760 and self._mobile_detail:
+        if self.width() < _SINGLE_PANE_WIDTH and self._mobile_detail:
             self._back_to_list()
         self.search_edit.setFocus()
         self.search_edit.selectAll()
@@ -356,12 +350,17 @@ class MainWindow(QMainWindow):
         sidebar.setMinimumWidth(180)
         sidebar.setMaximumWidth(220)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(16, 24, 12, 16)
-        side.setSpacing(8)
-        vault_title = QLabel("我的密码库")
-        vault_title.setProperty("paneTitle", True)
-        side.addWidget(vault_title)
-        side.addSpacing(16)
+        side.setContentsMargins(14, 18, 12, 14)
+        side.setSpacing(6)
+        vault_caption = QLabel("密码库")
+        vault_caption.setProperty("muted", True)
+        side.addWidget(vault_caption)
+        self.vault_label = QLabel()
+        self.vault_label.setObjectName("vaultLabel")
+        self.vault_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.vault_label.setWordWrap(True)
+        side.addWidget(self.vault_label)
+        side.addSpacing(8)
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("navigation")
         self.nav_list.setIconSize(QSize(18, 18))
@@ -386,45 +385,47 @@ class MainWindow(QMainWindow):
         list_header = QWidget()
         list_header.setObjectName("listHeader")
         header = QVBoxLayout(list_header)
-        header.setContentsMargins(18, 22, 18, 16)
-        header.setSpacing(12)
+        header.setContentsMargins(14, 14, 14, 10)
+        header.setSpacing(8)
         title_row = QHBoxLayout()
         self.list_title = QLabel(NAV_ALL)
         self.list_title.setProperty("paneTitle", True)
-        title_row.addWidget(self.list_title, 1)
+        title_row.addWidget(self.list_title)
         self.result_count = QLabel()
-        self.result_count.setProperty("muted", True)
+        self.result_count.setObjectName("listCount")
         title_row.addWidget(self.result_count)
+        title_row.addStretch(1)
         self.new_button = QToolButton()
         self.new_button.setDefaultAction(self.new_action)
         self.new_button.setText("新建")
         self.new_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.new_button.setProperty("variant", "primary")
-        title_row.addWidget(self.new_button)
         header.addLayout(title_row)
         self.search_edit = QLineEdit()
         self.search_edit.setObjectName("globalSearch")
         self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setPlaceholderText("搜索账号、网址、邮箱或绑定信息")
+        self.search_edit.setPlaceholderText("搜索账户、网址或邮箱")
         self.search_edit.setToolTip("支持名称、邮箱、身份与长网址片段 · Ctrl+F")
+        self.search_edit.installEventFilter(self)
+        self.search_edit.returnPressed.connect(self._open_search_result)
         self.search_edit.addAction(icons.line_icon("search"), QLineEdit.ActionPosition.LeadingPosition)
-        self.search_edit.textChanged.connect(
-            lambda _text: self._refresh_accounts(update_navigation=False)
-        )
-        header.addWidget(self.search_edit)
-        order_row = QHBoxLayout()
+        self.search_edit.textChanged.connect(self._search_changed)
+        search_row = QHBoxLayout()
+        search_row.addWidget(self.search_edit, 1)
+        search_row.addWidget(self.new_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        header.addLayout(search_row)
         self.sort_combo = QComboBox()
         self.sort_combo.setObjectName("accountSort")
+        self.sort_combo.setAccessibleName("账户排序")
         self.sort_combo.addItem("最近使用", "recent")
         self.sort_combo.addItem("按名称", "name")
         self.sort_combo.setCurrentIndex(max(0, self.sort_combo.findData(app_settings().value("account_sort", "recent"))))
         self.sort_combo.currentIndexChanged.connect(self._sort_changed)
-        order_row.addWidget(self.sort_combo)
-        self.search_scope = QLabel("全部账户 · 按匹配度排序")
+        title_row.addWidget(self.sort_combo)
+        self.search_scope = QLabel("全部账户")
+        self.search_scope.setToolTip("搜索全部账户，按匹配度排序")
         self.search_scope.setProperty("muted", True)
-        order_row.addWidget(self.search_scope)
-        order_row.addStretch(1)
-        header.addLayout(order_row)
+        title_row.addWidget(self.search_scope)
         middle_layout.addWidget(list_header)
         self.account_list = QListWidget()
         self.account_list.setObjectName("accountList")
@@ -435,13 +436,57 @@ class MainWindow(QMainWindow):
         self.account_list.currentItemChanged.connect(self._on_selection)
         self.account_list.itemClicked.connect(self._activate_detail)
         self.account_list.itemActivated.connect(self._activate_detail)
-        self.account_list.itemDoubleClicked.connect(lambda *_args: self._edit_selected() if self.width() >= 760 else None)
+        self.account_list.itemDoubleClicked.connect(
+            lambda *_args: self._edit_selected() if self.width() >= _SINGLE_PANE_WIDTH else None
+        )
         middle_layout.addWidget(self.account_list, 1)
         self.list_empty = QLabel("暂无账户")
         self.list_empty.setObjectName("listEmpty")
         self.list_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.list_empty.setWordWrap(True)
-        middle_layout.addWidget(self.list_empty, 1)
+        self.list_empty_panel = QWidget()
+        self.list_empty_panel.setObjectName("listEmptyPanel")
+        empty_layout = QVBoxLayout(self.list_empty_panel)
+        empty_layout.setContentsMargins(18, 16, 18, 16)
+        empty_layout.addStretch(1)
+        empty_card = QFrame()
+        empty_card.setObjectName("listEmptyCard")
+        empty_card.setMinimumWidth(244)
+        empty_card.setMaximumWidth(380)
+        card_layout = QVBoxLayout(empty_card)
+        card_layout.setContentsMargins(20, 22, 20, 22)
+        card_layout.setSpacing(10)
+        card_layout.addWidget(self.list_empty)
+        self.list_empty_hint = QLabel()
+        self.list_empty_hint.setProperty("muted", True)
+        self.list_empty_hint.setWordWrap(True)
+        self.list_empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(self.list_empty_hint)
+        self.list_empty_action = QPushButton()
+        self.list_empty_action.setProperty("variant", "primary")
+        self.list_empty_action.clicked.connect(self._handle_empty_list_action)
+        card_layout.addWidget(self.list_empty_action, 0, Qt.AlignmentFlag.AlignHCenter)
+        empty_layout.addWidget(empty_card, 0, Qt.AlignmentFlag.AlignHCenter)
+        empty_layout.addStretch(1)
+        middle_layout.addWidget(self.list_empty_panel, 1)
+        self.recycle_notice = QFrame()
+        self.recycle_notice.setObjectName("recycleNotice")
+        notice_layout = QHBoxLayout(self.recycle_notice)
+        notice_layout.setContentsMargins(12, 6, 8, 6)
+        notice_layout.setSpacing(6)
+        notice_layout.addWidget(QLabel("已移入回收站"), 1)
+        self.open_recycle_button = QPushButton("查看回收站")
+        self.open_recycle_button.setAccessibleName("查看回收站")
+        self.open_recycle_button.setProperty("variant", "ghost")
+        self.open_recycle_button.clicked.connect(self._open_recycle_bin)
+        notice_layout.addWidget(self.open_recycle_button)
+        dismiss_notice = QPushButton("关闭")
+        dismiss_notice.setAccessibleName("关闭回收站提示")
+        dismiss_notice.setProperty("variant", "ghost")
+        dismiss_notice.clicked.connect(self.recycle_notice.hide)
+        notice_layout.addWidget(dismiss_notice)
+        self.recycle_notice.hide()
+        middle_layout.addWidget(self.recycle_notice)
         self.splitter.addWidget(middle)
 
         self.detail_panel = self._make_detail_panel()
@@ -450,6 +495,7 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 0)
         self.splitter.setStretchFactor(2, 1)
         self.splitter.setSizes([188, 328, 704])
+        self.splitter.splitterMoved.connect(self._remember_desktop_splitter)
         self._pending_splitter_state = app_settings().value("workspace_splitter")
         self._refresh_icons()
 
@@ -574,8 +620,10 @@ class MainWindow(QMainWindow):
                 if answer != QMessageBox.StandardButton.Yes:
                     event.ignore()
                     return
-        if self.width() >= 1000:
+        if self.width() >= _DESKTOP_WIDTH:
             app_settings().setValue("workspace_splitter", self.splitter.saveState())
+        elif self._desktop_splitter_state is not None:
+            app_settings().setValue("workspace_splitter", self._desktop_splitter_state)
         self._idle_timer.stop()
         self._shutdown_native()
         QApplication.instance().removeEventFilter(self._activity)
@@ -588,14 +636,22 @@ class MainWindow(QMainWindow):
     def _clear_sensitive_views(self) -> None:
         for dialog in self.findChildren(QDialog):
             if dialog.isVisible():
-                dialog.reject()
+                if isinstance(dialog, AccountEditor):
+                    dialog.done(QDialog.DialogCode.Rejected)
+                else:
+                    dialog.reject()
+        self._before_search = None
         self.search_edit.clear()
+        self._visible_account_keys = None
         self.account_list.clear()
         self.detail_panel.show_empty("已锁定")
         self.list_title.setText("已锁定")
         self.result_count.clear()
         self.vault_label.clear()
         self.list_empty.setText("密码库已锁定")
+        self.list_empty_hint.clear()
+        self.list_empty_action.hide()
+        self.recycle_notice.hide()
         self.lock_password_edit.clear()
         self.lock_error_label.clear()
         self.lock_vault_path.clear()
@@ -678,56 +734,65 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        if self._pending_splitter_state is not None:
-            state = self._pending_splitter_state
-            self._pending_splitter_state = None
-            QTimer.singleShot(0, lambda: self._restore_splitter_state(state))
+        self._update_responsive()
 
     def _restore_splitter_state(self, state) -> None:
-        if self.width() >= 1000 and self.splitter.restoreState(state):
+        if self.width() < _DESKTOP_WIDTH:
+            self._pending_splitter_state = state
+        elif self.splitter.restoreState(state):
             self._desktop_splitter_sizes = self.splitter.sizes()
+
+    def _remember_desktop_splitter(self, _position, _index) -> None:
+        if self.width() >= _DESKTOP_WIDTH:
+            self._desktop_splitter_sizes = self.splitter.sizes()
+            self._desktop_splitter_state = self.splitter.saveState()
 
     def _update_responsive(self) -> None:
         width = self.width()
-        if width >= 1000:
+        desktop = width >= _DESKTOP_WIDTH
+        single = width < _SINGLE_PANE_WIDTH
+        if desktop:
             self._nav_open = False
-        single = width < 760
-        sidebar_visible = width >= 1000 or self._nav_open
-        signature = (single, self._mobile_detail if single else False, sidebar_visible)
+        if not single:
+            self._mobile_detail = False
+        sidebar_visible = desktop or self._nav_open
+        signature = (desktop, single, self._mobile_detail, sidebar_visible)
         if signature != self._responsive_signature:
-            previous = self._responsive_signature
-            if previous is not None and not previous[0] and single:
-                sizes = self.splitter.sizes()
-                if len(sizes) == 3 and sum(sizes) > 0:
-                    self._desktop_splitter_sizes = sizes
-
+            self.sidebar.setMaximumWidth(220 if desktop else self.sidebar.minimumWidth())
             self.sidebar.setVisible(sidebar_visible)
             self.middle_pane.setVisible(not single or not self._mobile_detail)
             self.detail_panel.setVisible(not single or self._mobile_detail)
             if single:
-                self.splitter.setSizes(
-                    [0, max(0, self.splitter.width() - 2), 0]
-                    if not self._mobile_detail
-                    else [0, 0, max(0, self.splitter.width() - 2)]
-                )
-            elif previous is not None and previous[0] and self._desktop_splitter_sizes:
+                left = self.sidebar.minimumWidth() if sidebar_visible else 0
+                remaining = width - left - (self.splitter.handleWidth() if left else 0)
+                if self._mobile_detail:
+                    self.splitter.setSizes([left, 0, remaining])
+                else:
+                    self.splitter.setSizes([left, remaining, 0])
+            elif desktop and self._desktop_splitter_sizes:
                 self.splitter.setSizes(self._desktop_splitter_sizes)
             elif sidebar_visible:
-                left = 188 if width >= 1000 else 164
-                middle = 328 if width >= 1000 else 272
+                left = 188 if desktop else self.sidebar.minimumWidth()
+                middle = 328 if desktop else self.middle_pane.minimumWidth()
                 self.splitter.setSizes([left, middle, max(320, width - left - middle)])
             else:
                 middle = min(328, max(310, round(width * 0.34)))
                 self.splitter.setSizes([0, middle, max(320, width - middle)])
             self._responsive_signature = signature
 
-        self.nav_button.setVisible(width < 1000)
+        if desktop and self.isVisible() and self._pending_splitter_state is not None:
+            state = self._pending_splitter_state
+            self._pending_splitter_state = None
+            QTimer.singleShot(0, lambda: self._restore_splitter_state(state))
+
+        self.nav_button.setVisible(not desktop)
         self.back_button.setVisible(single and self._mobile_detail)
-        self.lock_button.setText("锁定" if width >= 760 else "")
-        self.vault_label.setVisible(width >= 760)
+        self.lock_button.setText("" if single else "锁定")
 
     def _toggle_navigation(self) -> None:
         self._nav_open = not self._nav_open
+        if self._nav_open:
+            self._mobile_detail = False
         self._update_responsive()
 
     def _on_navigation_clicked(self, _item) -> None:
@@ -737,18 +802,54 @@ class MainWindow(QMainWindow):
         self._update_responsive()
 
     def _activate_detail(self, _item=None) -> None:
-        if self.width() < 760 and self._selected_pair():
+        if self.width() < _SINGLE_PANE_WIDTH and self._selected_pair():
             self._mobile_detail = True
             self._nav_open = False
             self._update_responsive()
 
     def _back_to_list(self) -> None:
+        returning = self._mobile_detail
         self._mobile_detail = False
         self._update_responsive()
+        if returning and self.account_list.currentItem() is not None:
+            self.account_list.setFocus()
+
+    def eventFilter(self, obj, event):  # noqa: N802 (Qt naming)
+        if (
+            obj is getattr(self, "search_edit", None)
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Down
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            and self.account_list.currentItem() is not None
+        ):
+            self.account_list.setFocus()
+            return True
+        return super().eventFilter(obj, event)
+
+    def _open_search_result(self) -> None:
+        if not self.search_edit.text().strip() or self.account_list.currentItem() is None:
+            return
+        self._activate_detail()
+        if self.width() < _SINGLE_PANE_WIDTH:
+            self.back_button.setFocus()
+        else:
+            self.account_list.setFocus()
 
     def _selected_nav(self) -> str:
         item = self.nav_list.currentItem()
         return item.text() if item is not None else NAV_ALL
+
+    def _handle_empty_list_action(self) -> None:
+        if self.catalog.is_locked or self.account_list.count():
+            return
+        if self.search_edit.text().strip():
+            self.search_edit.clear()
+            self.search_edit.setFocus()
+        elif self._selected_nav() != NAV_ALL:
+            self.nav_list.setCurrentRow(0)
+            self.account_list.setFocus()
+        else:
+            self._new_account()
 
     def _filtered_accounts(self) -> list[tuple[Service, Account]]:
         query = self.search_edit.text().strip()
@@ -770,12 +871,42 @@ class MainWindow(QMainWindow):
             pairs.sort(key=lambda pair: pair[1].last_used_at or "", reverse=True)
         return pairs
 
-    def _refresh_accounts(self, update_navigation: bool = True) -> None:
+    def _search_changed(self, text: str) -> None:
+        scrollbar = self.account_list.verticalScrollBar()
+        if text.strip():
+            if self._before_search is None:
+                self._before_search = (
+                    self._selected_nav(), self._selected_uuid(), scrollbar.value(),
+                )
+        elif self._before_search is not None:
+            category, account_uuid, scroll_position = self._before_search
+            self._before_search = None
+            for index in range(self.nav_list.count()):
+                if self.nav_list.item(index).text() == category:
+                    with QSignalBlocker(self.nav_list):
+                        self.nav_list.setCurrentRow(index)
+                    break
+            self._refresh_accounts(update_navigation=False, preferred_uuid=account_uuid)
+            if self._mobile_detail:
+                self._back_to_list()
+            self.account_list.doItemsLayout()
+            scrollbar.setValue(scroll_position)
+            return
+        self._refresh_accounts(update_navigation=False)
+
+    def _refresh_accounts(
+        self,
+        update_navigation: bool = True,
+        *,
+        preserve_detail: bool = False,
+        preferred_uuid: str | None = None,
+        fallback_row: int = 0,
+    ) -> None:
         if self.catalog.is_locked:
             return
         if update_navigation:
             self._update_navigation()
-        current_uuid = self._selected_uuid()
+        current_uuid = preferred_uuid or self._selected_uuid()
         query = self.search_edit.text().strip()
         hits = (
             self.catalog.search_index.search(query, limit=_SEARCH_RESULT_LIMIT + 1)
@@ -788,32 +919,57 @@ class MainWindow(QMainWindow):
             pairs = [(h.service, h.account, h.matched) for h in hits]
         else:
             pairs = [(s, a, "") for s, a in self._nav_filtered()]
-        self.account_list.setUpdatesEnabled(False)
-        try:
-            self.account_list.clear()
-            for service, account, hint in pairs:
-                title, subtitle, meta = public_summary(service, account)
-                item = QListWidgetItem(" · ".join((title, subtitle, meta)))
-                item.setData(pair_role, (service, account))
-                item.setData(summary_role, (title, subtitle, meta, category_icon(service, account)))
-                tooltip = [title, subtitle, meta]
-                if hint:
-                    tooltip.append(f"命中字段：{hint}")
-                    item.setData(
-                        Qt.ItemDataRole.AccessibleDescriptionRole,
-                        f"搜索命中字段：{hint}",
-                    )
-                item.setToolTip("<br>".join(html.escape(part, quote=True) for part in tooltip if part))
-                item.setSizeHint(QSize(300, 72))
-                self.account_list.addItem(item)
-                if account.uuid == current_uuid:
-                    self.account_list.setCurrentItem(item)
-        finally:
-            self.account_list.setUpdatesEnabled(True)
+        keys = tuple((id(service), id(account), hint) for service, account, hint in pairs)
+        if update_navigation or keys != self._visible_account_keys:
+            blocker = None
+            if preserve_detail and current_uuid and any(account.uuid == current_uuid for _, account, _ in pairs):
+                blocker = QSignalBlocker(self.account_list)
+            self.account_list.setUpdatesEnabled(False)
+            try:
+                self.account_list.clear()
+                for service, account, hint in pairs:
+                    title, subtitle, meta = public_summary(service, account)
+                    item = QListWidgetItem(" · ".join((title, subtitle, meta)))
+                    item.setData(pair_role, (service, account))
+                    item.setData(summary_role, (title, subtitle, meta, category_icon(service, account)))
+                    tooltip = [title, subtitle, meta]
+                    if hint:
+                        tooltip.append(f"命中字段：{hint}")
+                        item.setData(
+                            Qt.ItemDataRole.AccessibleDescriptionRole,
+                            f"搜索命中字段：{hint}",
+                        )
+                    item.setToolTip("<br>".join(html.escape(part, quote=True) for part in tooltip if part))
+                    self.account_list.addItem(item)
+                    if account.uuid == current_uuid:
+                        self.account_list.setCurrentItem(item)
+            finally:
+                self.account_list.setUpdatesEnabled(True)
+                if blocker is not None:
+                    blocker.unblock()
+            self._visible_account_keys = keys
+        elif preferred_uuid and preferred_uuid != self._selected_uuid():
+            for index, (_, account, _) in enumerate(pairs):
+                if account.uuid == preferred_uuid:
+                    self.account_list.setCurrentRow(index)
+                    break
         count = self.account_list.count()
         self.account_list.setVisible(bool(count))
-        self.list_empty.setVisible(not count)
-        self.list_empty.setText("没有搜索结果\n试试名称、网址片段或邮箱" if query else "这里还没有账户\n使用列表标题旁“新建”添加")
+        self.list_empty_panel.setVisible(not count)
+        self.list_empty_action.setVisible(not count)
+        if not count:
+            if query:
+                self.list_empty.setText("没有搜索结果")
+                self.list_empty_hint.setText("试试名称、网址片段或邮箱")
+                self.list_empty_action.setText("清除搜索")
+            elif self._selected_nav() != NAV_ALL:
+                self.list_empty.setText("此分类下没有账户")
+                self.list_empty_hint.setText("可返回全部账户继续查找")
+                self.list_empty_action.setText("查看全部账户")
+            else:
+                self.list_empty.setText("这里还没有账户")
+                self.list_empty_hint.setText("添加第一条账户记录")
+                self.list_empty_action.setText("新建账户")
         self.list_title.setText("搜索结果" if query else self._selected_nav())
         self.search_scope.setVisible(bool(query))
         self.sort_combo.setVisible(not query)
@@ -823,7 +979,7 @@ class MainWindow(QMainWindow):
         else:
             self.result_count.setText(f"{count} 个结果" if query else f"{count} 个账户")
         if self.account_list.currentItem() is None and self.account_list.count():
-            self.account_list.setCurrentRow(0)
+            self.account_list.setCurrentRow(min(fallback_row, count - 1))
         if not self.account_list.count():
             if query:
                 self.detail_panel.show_empty(f"没有匹配 “{query}” 的账户")
@@ -859,7 +1015,8 @@ class MainWindow(QMainWindow):
         if self.catalog.is_locked:
             self.vault_label.clear()
             return
-        self.vault_label.setText(self.catalog.path.stem[:32])
+        name = self.catalog.path.stem
+        self.vault_label.setText(name if len(name) <= 24 else name[:23] + "…")
         self.vault_label.setToolTip(str(self.catalog.path))
 
     # ------------------------------------------------------------------ actions
@@ -869,7 +1026,18 @@ class MainWindow(QMainWindow):
             return
         editor = AccountEditor(self.catalog, parent=self)
         if editor.exec() == AccountEditor.DialogCode.Accepted:
-            self._after_data_change()
+            created = editor.created_account
+            if created is not None and not self.catalog.is_locked:
+                self._before_search = None
+                with QSignalBlocker(self.search_edit):
+                    self.search_edit.clear()
+                located = self.catalog.catalog.find_account(created.uuid)
+                if located is not None and self._selected_nav() not in (NAV_ALL, main_category(*located)):
+                    with QSignalBlocker(self.nav_list):
+                        self.nav_list.setCurrentRow(0)
+                self._after_data_change(preferred_uuid=created.uuid)
+            else:
+                self._after_data_change()
         editor.deleteLater()
 
     def _edit_selected(self, *_args) -> None:
@@ -896,6 +1064,7 @@ class MainWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        deleted_row = self.account_list.currentRow()
         try:
             with self.catalog.mutation():
                 self.catalog.delete_account(account.uuid)
@@ -903,9 +1072,15 @@ class MainWindow(QMainWindow):
         except AccnaryError as exc:
             self._show_save_error(exc)
             return
-        self._after_data_change()
+        if self.catalog.is_locked:
+            return
+        if self._mobile_detail:
+            self._back_to_list()
+        self.recycle_notice.show()
+        self._after_data_change(fallback_row=deleted_row)
 
     def _open_recycle_bin(self) -> None:
+        self.recycle_notice.hide()
         dialog = RecycleBinDialog(
             self.catalog, parent=self, on_changed=self._after_data_change
         )
@@ -930,30 +1105,50 @@ class MainWindow(QMainWindow):
         except Exception:
             return  # recency is best-effort; copying the credential already succeeded
         self._update_context()
-        if self.sort_combo.currentData() == "recent":
-            self._refresh_accounts()
+        if self.sort_combo.currentData() != "recent" or self.account_list.count() <= 1:
+            return
+        if not self.search_edit.text().strip() and self._selected_uuid() == account_uuid:
+            pairs = self._nav_filtered()
+            target = next((i for i, (_, account) in enumerate(pairs) if account.uuid == account_uuid), None)
+            if target is not None and len(pairs) == self.account_list.count():
+                current = self.account_list.currentRow()
+                if current != target:
+                    # Only this account's timestamp changed, so the remaining rows
+                    # already have the correct relative order.
+                    with QSignalBlocker(self.account_list):
+                        item = self.account_list.takeItem(current)
+                        self.account_list.insertItem(target, item)
+                        self.account_list.setCurrentItem(item)
+                    self._visible_account_keys = None
+                return
+        self._refresh_accounts(update_navigation=False, preserve_detail=True)
 
-    def _after_data_change(self) -> None:
-        """Reload the catalog model from disk and refresh all panes."""
-        try:
-            self._run_storage_task("正在重新读取密码库…", self.catalog.reopen)
-        except Exception as exc:  # vault file vanished / undecryptable
-            QMessageBox.critical(self, "重新加载失败", str(exc))
-        self._rebuild_detail_panel()
-        self._refresh_accounts()
+    def _after_data_change(self, *, preferred_uuid: str | None = None, fallback_row: int = 0) -> None:
+        """Refresh from the catalog after its save and search index rebuild."""
+        scrollbar = self.account_list.verticalScrollBar()
+        scroll_position = scrollbar.value()
+        self._refresh_accounts(preferred_uuid=preferred_uuid, fallback_row=fallback_row)
+        selected = self.account_list.currentItem()
+        if selected is not None:
+            self.account_list.doItemsLayout()
+            if preferred_uuid is None:
+                scrollbar.setValue(scroll_position)
+            self.account_list.scrollToItem(selected)
 
     def _rebuild_detail_panel(self) -> None:
         sizes = self.splitter.sizes()
         index = self.splitter.indexOf(self.detail_panel) if self.detail_panel else 2
         if self.detail_panel is not None:
+            self.detail_panel.show_empty()
             self.detail_panel.hide()
             self.detail_panel.setParent(None)
             self.detail_panel.deleteLater()
         self.detail_panel = self._make_detail_panel()
         self.splitter.insertWidget(max(index, 0), self.detail_panel)
         self.splitter.setStretchFactor(max(index, 0), 1)
-        self.splitter.setSizes(sizes)
+        self._responsive_signature = None
         self._update_responsive()
+        self.splitter.setSizes(sizes)
 
     def _show_save_error(self, exc: Exception) -> None:
         if isinstance(exc, ConflictError):

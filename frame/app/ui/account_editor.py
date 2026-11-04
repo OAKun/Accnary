@@ -12,10 +12,13 @@ only their presentation is divided into explicit task-oriented tabs.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid as uuidlib
 from copy import deepcopy
+from dataclasses import replace
 
-from PySide6.QtCore import QStringListModel, Qt
+from PySide6.QtCore import QStringListModel, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,6 +28,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -60,6 +64,7 @@ from app.ui.labels import (
     LOGIN_METHOD_LABELS,
     SERVICE_TYPE_LABELS,
 )
+from app.ui import icons, theme
 from app.ui.widgets import PasswordInput, SectionHeader
 from app.ui.storage_task import run_storage_task
 from app.ui.categories import categories, category_key, main_category, uncategorized
@@ -127,7 +132,7 @@ class _RowBar(QHBoxLayout):
         super().__init__()
         self.setSpacing(6)
         self.remove_btn = QToolButton()
-        self.remove_btn.setText("✕")
+        self.remove_btn.setIcon(icons.line_icon("trash", theme.PALETTES[theme.current_theme()]["muted"]))
         self.remove_btn.setToolTip("移除此项")
         self.remove_btn.setAccessibleName("移除此项")
         self.remove_btn.setAutoRaise(True)
@@ -170,20 +175,14 @@ class AccountEditor(QDialog):
         title = QLabel("编辑账户" if self.is_edit else "新建账户")
         title.setProperty("pageTitle", True)
         heading_layout.addWidget(title)
-        hint = QLabel("基本资料快速录入，登录绑定和许可证分组维护。")
+        hint = QLabel(
+            "输入账号、邮箱或手机号时，可选填密码库中的已有内容。"
+            if self.is_edit else "选择已有平台会带入平台资料，账号和登录网址可从候选中选填。"
+        )
         hint.setProperty("muted", True)
+        hint.setWordWrap(True)
         heading_layout.addWidget(hint)
         outer.addWidget(heading)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        outer.addWidget(scroll)
-        body = QWidget()
-        body.setObjectName("editorBody")
-        scroll.setWidget(body)
-        main_layout = QVBoxLayout(body)
-        main_layout.setContentsMargins(24, 12, 24, 20)
-        main_layout.setSpacing(10)
 
         # ---- basic form ---------------------------------------------------
         form = QFormLayout()
@@ -194,6 +193,7 @@ class AccountEditor(QDialog):
         self.service_combo = QComboBox()
         self.service_combo.setEditable(True)
         self.service_combo.lineEdit().setPlaceholderText("例如：QQ、微信、GitHub 或软件名称")
+        self.service_combo.setToolTip("选择已有平台会带入类型、原分类、标签、平台别名和关联网址。")
         self.service_combo.completer().setCaseSensitivity(
             Qt.CaseSensitivity.CaseInsensitive
         )
@@ -231,7 +231,7 @@ class AccountEditor(QDialog):
 
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("QQ 号、微信号、邮箱或用户名")
-        self.username_edit.setToolTip("可输入新值，也可从密码库已有用户名和身份中选择")
+        self.username_edit.setToolTip("输入后显示匹配候选，同平台账号优先。")
         self._username_suggestions = _install_completer(self.username_edit)
         form.addRow("用户名", self.username_edit)
 
@@ -261,10 +261,12 @@ class AccountEditor(QDialog):
 
         accounts = catalog.catalog.all_accounts()
         identities = catalog.catalog.identities
-        self._username_suggestions.setStringList(_unique_suggestions(
+        self._username_pool = _unique_suggestions(
             [account.username for account in accounts]
             + [identity.value for identity in identities]
-        ))
+        )
+        self._username_suggestions.setStringList(self._username_pool)
+        self._suggestion_platform: Service | None = None
         self._email_suggestions.setStringList(_unique_suggestions(
             [account.email for account in accounts]
             + [identity.value for identity in identities
@@ -283,17 +285,15 @@ class AccountEditor(QDialog):
         self.tabs = QTabWidget()
         self.tabs.setObjectName("editorTabs")
         self.tabs.setDocumentMode(True)
-        main_layout.addWidget(self.tabs)
+        outer.addWidget(self.tabs, 1)
         basic = QWidget()
         basic_layout = QVBoxLayout(basic)
-        basic_layout.setContentsMargins(0, 24, 0, 0)
         basic_layout.addLayout(form)
         basic_layout.addStretch(1)
-        self.tabs.addTab(basic, "基本资料")
+        self._add_form_tab(basic, "基本资料")
 
         contact_page = QWidget()
         more_layout = QVBoxLayout(contact_page)
-        more_layout.setContentsMargins(0, 24, 0, 0)
         more_layout.setSpacing(24)
         account_extra = QWidget()
         extra_form = QFormLayout(account_extra)
@@ -306,7 +306,7 @@ class AccountEditor(QDialog):
         more_layout.addWidget(account_extra)
         more_layout.addWidget(self._build_service_group())
         more_layout.addStretch(1)
-        self.tabs.addTab(contact_page, "平台与联系")
+        self._add_form_tab(contact_page, "平台与联系")
         for title, groups in (
             ("登录与绑定", (self._build_methods_group(), self._build_bindings_group())),
             ("许可证", (self._build_license_group(),)),
@@ -314,12 +314,11 @@ class AccountEditor(QDialog):
         ):
             page = QWidget()
             page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(0, 24, 0, 0)
             page_layout.setSpacing(24)
             for group in groups:
                 page_layout.addWidget(group)
             page_layout.addStretch(1)
-            self.tabs.addTab(page, title)
+            self._add_form_tab(page, title)
 
         # ---- buttons -------------------------------------------------------
         self.error_label = QLabel("")
@@ -359,24 +358,41 @@ class AccountEditor(QDialog):
             idx = self.service_type_combo.findData(service.type.value)
             if idx >= 0:
                 self.service_type_combo.setCurrentIndex(idx)
+        self._initial_form_digest = self._form_digest()
+
+    def _add_form_tab(self, page: QWidget, title: str) -> None:
+        page.setObjectName("editorBody")
+        page.layout().setContentsMargins(24, 16, 24, 20)
+        page.layout().setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(page)
+        self.tabs.addTab(scroll, title)
 
     def _load_existing_platform(self, name: str) -> None:
         service = self._catalog.catalog.find_service(name)
+        self._set_platform_suggestions(service)
         if service is None:
-            self._set_url_suggestions(None)
             return
         self.service_type_combo.setCurrentIndex(self.service_type_combo.findData(service.type.value))
         self.category_edit.setText(service.category)
         self.tags_edit.setText(", ".join(service.tags))
         self.aliases_edit.setText(", ".join(service.aliases))
         self.urls_edit.setText(", ".join(service.urls))
-        self._set_url_suggestions(service)
 
-    def _set_url_suggestions(self, service: Service | None) -> None:
+    def _set_platform_suggestions(self, service: Service | None) -> None:
+        if service is self._suggestion_platform:
+            return
+        self._suggestion_platform = service
+        usernames = self._username_pool
         urls = []
         if service is not None:
-            urls.extend(service.urls)
-            urls.extend(account.primary_url for account in service.accounts)
+            usernames = _unique_suggestions(
+                [account.username for account in service.accounts] + usernames
+            )
+            urls = [*service.urls, *service.login_urls, *(account.primary_url for account in service.accounts)]
+        self._username_suggestions.setStringList(usernames)
         self._url_suggestions.setStringList(_unique_suggestions(urls))
 
     # ------------------------------------------------------------------ UI
@@ -424,7 +440,7 @@ class AccountEditor(QDialog):
         layout.addLayout(self.methods_layout)
         add_btn = QPushButton("添加登录方式")
         add_btn.setProperty("variant", "ghost")
-        add_btn.clicked.connect(lambda: self._add_method_row())
+        add_btn.clicked.connect(lambda: self._focus_form_field(self._add_method_row()))
         layout.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignLeft)
         return box
 
@@ -440,7 +456,7 @@ class AccountEditor(QDialog):
         bar = QHBoxLayout()
         add_btn = QPushButton("添加绑定")
         add_btn.setProperty("variant", "ghost")
-        add_btn.clicked.connect(lambda: self._add_binding_row())
+        add_btn.clicked.connect(lambda: self._focus_form_field(self._add_binding_row()))
         new_identity_btn = QPushButton("新建身份…")
         new_identity_btn.setProperty("variant", "ghost")
         new_identity_btn.clicked.connect(self._create_identity)
@@ -531,7 +547,7 @@ class AccountEditor(QDialog):
         layout.addLayout(self.fields_layout)
         add_btn = QPushButton("添加字段")
         add_btn.setProperty("variant", "ghost")
-        add_btn.clicked.connect(lambda: self._add_field_row())
+        add_btn.clicked.connect(lambda: self._focus_form_field(self._add_field_row()))
         layout.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignLeft)
         return box
 
@@ -543,7 +559,7 @@ class AccountEditor(QDialog):
         identity_ref: str | None = None,
         note: str = "",
         method: LoginMethod | None = None,
-    ) -> None:
+    ) -> QComboBox:
         bar = _RowBar(on_remove=lambda: self._remove_row(self.methods_layout, bar))
         bar.method = deepcopy(method)
         type_combo = QComboBox()
@@ -561,12 +577,13 @@ class AccountEditor(QDialog):
         bar.addWidget(note_edit, 2)
         bar.addWidget(bar.remove_btn)
         self.methods_layout.addLayout(bar)
+        return type_combo
 
     def _add_binding_row(
         self,
         role: BindingRole = BindingRole.LINKED_IDENTITY,
         identity_ref: str | None = None,
-    ) -> None:
+    ) -> QComboBox:
         bar = _RowBar(on_remove=lambda: self._remove_row(self.bindings_layout, bar))
         role_combo = QComboBox()
         for r in BindingRole:
@@ -579,8 +596,9 @@ class AccountEditor(QDialog):
         bar.addWidget(identity_combo, 3)
         bar.addWidget(bar.remove_btn)
         self.bindings_layout.addLayout(bar)
+        return role_combo
 
-    def _add_field_row(self, key: str = "", value: str = "", protected: bool = False) -> None:
+    def _add_field_row(self, key: str = "", value: str = "", protected: bool = False) -> QLineEdit:
         bar = _RowBar(on_remove=lambda: self._remove_row(self.fields_layout, bar))
         key_edit = QLineEdit(key)
         key_edit.setPlaceholderText("字段名（不得以 Accnary. 开头）")
@@ -599,6 +617,7 @@ class AccountEditor(QDialog):
         bar.addWidget(protected_check)
         bar.addWidget(bar.remove_btn)
         self.fields_layout.addLayout(bar)
+        return key_edit
 
     @staticmethod
     def _remove_row(parent_layout, bar: _RowBar) -> None:
@@ -607,7 +626,12 @@ class AccountEditor(QDialog):
                 while bar.count():
                     item = bar.takeAt(0)
                     if item.widget() is not None:
-                        item.widget().deleteLater()
+                        widget = item.widget()
+                        if isinstance(widget, QLineEdit):
+                            widget.clear()
+                        widget.hide()
+                        widget.setParent(None)
+                        widget.deleteLater()
                 parent_layout.removeItem(bar)
                 return
 
@@ -717,7 +741,7 @@ class AccountEditor(QDialog):
         # platform attributes (shared by all accounts of this service)
         service = self._service
         if service is not None:
-            self._set_url_suggestions(service)
+            self._set_platform_suggestions(service)
             self.service_type_combo.setCurrentIndex(self.service_type_combo.findData(service.type.value))
             self.category_edit.setText(service.category)
             self.tags_edit.setText(", ".join(service.tags))
@@ -736,6 +760,7 @@ class AccountEditor(QDialog):
     def _assemble(self) -> tuple[Service, Account]:
         service_name = self.service_combo.currentText().strip()
         if not service_name:
+            self._focus_form_field(self.service_combo.lineEdit())
             raise AccnaryError("平台名称不能为空。")
         service_type = self._coerce(
             ServiceType, self.service_type_combo.currentData(), ServiceType.WEBSITE
@@ -820,7 +845,9 @@ class AccountEditor(QDialog):
         fields = self._editor_fields()
 
         if self.is_edit:
-            service = deepcopy(self._service)
+            # Only platform metadata is edited here; sibling accounts belong
+            # to the live catalog and can be large or contain many secrets.
+            service = deepcopy(replace(self._service, accounts=[]))
             # platform attributes are shared by every account of this service;
             # save() rewrites each entry's Accnary.Meta service block
             service.type = service_attrs["type"]
@@ -900,7 +927,41 @@ class AccountEditor(QDialog):
             if located:
                 self._service, self._account = located
 
+    def _form_digest(self) -> bytes:
+        values = []
+        # The stack raises the active page, which changes QObject child order.
+        for index in range(self.tabs.count()):
+            page = self.tabs.widget(index).widget()
+            for field in page.findChildren(QWidget):
+                if field.window() is not self:
+                    continue
+                if isinstance(field, QLineEdit):
+                    values.append(("text", field.text()))
+                elif isinstance(field, QTextEdit):
+                    values.append(("notes", field.toPlainText()))
+                elif isinstance(field, QComboBox):
+                    values.append(("choice", field.currentIndex(), field.currentData()))
+                elif isinstance(field, QCheckBox):
+                    values.append(("checked", field.isChecked()))
+                elif isinstance(field, QSpinBox):
+                    values.append(("number", field.value()))
+        return hashlib.sha256(json.dumps(values, ensure_ascii=True).encode("ascii")).digest()
+
+    def reject(self) -> None:
+        if self.isVisible() and self._initial_form_digest is not None and (
+            self._pending_identities or self._form_digest() != self._initial_form_digest
+        ):
+            answer = QMessageBox.question(
+                self, "放弃未保存的修改？", "关闭编辑器会丢弃本次修改。",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Discard or self._initial_form_digest is None:
+                return
+        super().reject()
+
     def done(self, result) -> None:
+        self._initial_form_digest = None
         self._pending_identities.clear()
         self._account = None
         self._service = None
@@ -909,6 +970,13 @@ class AccountEditor(QDialog):
             edit.clear()
         for edit in self.findChildren(QTextEdit):
             edit.clear()
+        self._suggestion_platform = None
+        self._username_pool.clear()
+        for suggestions in (
+            self._username_suggestions, self._url_suggestions,
+            self._email_suggestions, self._phone_suggestions,
+        ):
+            suggestions.setStringList([])
         super().done(result)
 
     def _write_custom_fields(self, account: Account) -> None:
@@ -932,8 +1000,24 @@ class AccountEditor(QDialog):
                 self._catalog.remove_custom_field(account.uuid, key)
         account.custom_fields = list(wanted.values())
 
+    def _focus_form_field(self, field: QWidget) -> None:
+        for index in range(self.tabs.count()):
+            scroll = self.tabs.widget(index)
+            if isinstance(scroll, QScrollArea) and scroll.isAncestorOf(field):
+                self.tabs.setCurrentIndex(index)
+                scroll.ensureWidgetVisible(field)
+                # New rows receive their final geometry after the layout event.
+                QTimer.singleShot(
+                    0, field, lambda: scroll.ensureWidgetVisible(field) if field.hasFocus() else None,
+                )
+                break
+        field.setFocus()
+        if isinstance(field, QLineEdit):
+            field.selectAll()
+
     def _editor_fields(self) -> list[CustomField]:
         fields = []
+        keys = set()
         for i in range(self.fields_layout.count()):
             row = self.fields_layout.itemAt(i)
             if not isinstance(row, _RowBar):
@@ -943,17 +1027,22 @@ class AccountEditor(QDialog):
             protected_check = row.itemAt(2).widget()
             key = key_edit.text().strip()
             if key:
+                if key == category_key and (
+                    self._purpose_changed or (self._purpose_field and not self._purpose_field.protected)
+                ):
+                    self._focus_form_field(key_edit)
+                    raise AccnaryError("主分类请在基本资料中设置，自定义字段不能重复使用该名称。")
+                if key in keys:
+                    self._focus_form_field(key_edit)
+                    raise AccnaryError("自定义字段名称不能重复；主分类请在基本资料中设置。")
+                keys.add(key)
                 fields.append(
                     CustomField(
                         key=key, value=value_edit.text(), protected=protected_check.isChecked()
                     )
                 )
         if self._purpose_changed:
-            if any(field.key == category_key for field in fields):
-                raise AccnaryError("主分类请在基本资料中设置，自定义字段不能重复使用该名称。")
             fields.append(CustomField(key=category_key, value=self.purpose_combo.currentData(), protected=False))
         elif self._purpose_field and not self._purpose_field.protected:
             fields.append(deepcopy(self._purpose_field))
-        if len({field.key for field in fields}) != len(fields):
-            raise AccnaryError("自定义字段名称不能重复；主分类请在基本资料中设置。")
         return fields

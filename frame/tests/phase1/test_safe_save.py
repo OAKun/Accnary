@@ -131,3 +131,38 @@ def test_no_plaintext_secrets_in_saved_file(full_catalog):
     blob = Path(str(svc.path)).read_bytes()
     for secret in (b"demo-pw-1", b"TEST-KEY-0000-1111", b"wx_acc_01", b"demo-user"):
         assert secret not in blob, f"plaintext {secret!r} leaked into vault file"
+
+
+def test_snapshot_rejects_changed_source_and_preserves_previous_backup(tmp_path):
+    import hashlib
+    from app.storage.atomic import copy_snapshot
+
+    source = tmp_path / "source.kdbx"
+    destination = tmp_path / "previous.bak"
+    source.write_bytes(b"changed fictional ciphertext")
+    destination.write_bytes(b"previous fictional ciphertext")
+    expected = hashlib.sha256(b"original fictional ciphertext").hexdigest()
+    with pytest.raises(ConflictError):
+        copy_snapshot(source, destination, expected_sha256=expected)
+    assert destination.read_bytes() == b"previous fictional ciphertext"
+    assert not list(tmp_path.glob("*.accnary-tmp-*"))
+
+
+def test_snapshot_independently_verifies_staged_bytes(tmp_path, monkeypatch):
+    import hashlib
+    import app.storage.atomic as atomic
+
+    source = tmp_path / "source.kdbx"
+    destination = tmp_path / "previous.bak"
+    source.write_bytes(b"fictional ciphertext")
+    destination.write_bytes(b"previous fictional ciphertext")
+    expected = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    def corrupt_staged_file(source_path, staged_path):
+        staged_path.write_bytes(b"corrupted fictional ciphertext")
+
+    monkeypatch.setattr(atomic.shutil, "copystat", corrupt_staged_file)
+    with pytest.raises(OSError, match="snapshot changed"):
+        atomic.copy_snapshot(source, destination, expected_sha256=expected)
+    assert destination.read_bytes() == b"previous fictional ciphertext"
+    assert not list(tmp_path.glob("*.accnary-tmp-*"))

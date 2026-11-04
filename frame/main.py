@@ -83,7 +83,6 @@ def run_gui() -> int:
         update_ready_env_name,
         write_update_ready_marker,
     )
-    from app.ui import MainWindow
     from app.ui.unlock_dialog import UnlockDialog
 
     app = _build_app()
@@ -94,6 +93,8 @@ def run_gui() -> int:
     QTimer.singleShot(0, write_update_ready_marker)
     if unlock.exec() != UnlockDialog.DialogCode.Accepted or unlock.catalog is None:
         return 0
+    from app.ui import MainWindow
+
     window = MainWindow(unlock.catalog)
     unlock.catalog = None
     unlock.deleteLater()

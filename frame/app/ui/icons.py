@@ -115,6 +115,9 @@ def line_icon(name: str, color: str = "#607087") -> QIcon:
     elif name == "copy":
         painter.drawRoundedRect(QRectF(7, 2, 10, 12), 1.5, 1.5)
         painter.drawRoundedRect(QRectF(3, 6, 10, 12), 1.5, 1.5)
+    elif name == "check":
+        painter.drawLine(4, 10, 8, 14)
+        painter.drawLine(8, 14, 16, 6)
     elif name in ("eye", "eye_off"):
         path = QPainterPath()
         path.moveTo(2, 10)

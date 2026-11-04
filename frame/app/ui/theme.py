@@ -16,38 +16,40 @@ from PySide6.QtWidgets import QApplication
 
 PALETTES: dict[str, dict[str, str]] = {
     "light": {
-        "bg": "#ffffff",
-        "sidebar": "#f5f7fa",
+        "bg": "#f7f9f8",
+        "sidebar": "#f0f5f3",
         "panel": "#ffffff",
-        "panel2": "#f7f9fc",
-        "border": "#e7ecf3",
-        "text": "#202938",
-        "muted": "#667386",
-        "accent": "#2f68d5",
-        "accent_bg": "#2f68d5",
-        "accent_hover": "#2456b8",
+        "panel2": "#f5f8f7",
+        "credential_bg": "#edf7f4",
+        "border": "#dce7e3",
+        "text": "#182b27",
+        "muted": "#526660",
+        "accent": "#08776a",
+        "accent_bg": "#08776a",
+        "accent_hover": "#076559",
         "accent_text": "#ffffff",
         "danger": "#c83232",
-        "hover": "#f2f6fb",
-        "selected": "#ebf2ff",
+        "hover": "#f0f7f5",
+        "selected": "#dff2ec",
         "input_bg": "#ffffff",
     },
     "dark": {
-        "bg": "#181f2b",
-        "sidebar": "#19222f",
-        "panel": "#1e2735",
-        "panel2": "#242f40",
-        "border": "#303c50",
-        "text": "#e6edf8",
-        "muted": "#a9b6ca",
-        "accent": "#7096e8",
-        "accent_bg": "#326bd8",
-        "accent_hover": "#2f65c7",
+        "bg": "#131e1c",
+        "sidebar": "#152320",
+        "panel": "#1a2926",
+        "panel2": "#233631",
+        "credential_bg": "#233c35",
+        "border": "#374c46",
+        "text": "#e6f1ed",
+        "muted": "#aabfb7",
+        "accent": "#73d8c3",
+        "accent_bg": "#127568",
+        "accent_hover": "#0d665a",
         "accent_text": "#ffffff",
-        "danger": "#e06c6c",
-        "hover": "#263348",
-        "selected": "#2a3d5b",
-        "input_bg": "#1b1f25",
+        "danger": "#ff9292",
+        "hover": "#253c35",
+        "selected": "#29473e",
+        "input_bg": "#172723",
     },
 }
 
@@ -72,11 +74,12 @@ QWidget#workspaceRoot { background: @PANEL@; }
 QWidget#lockPage { background: @SIDEBAR@; }
 QFrame#lockCard { background: @PANEL@; border: 1px solid @BORDER@; border-radius: 12px; }
 QWidget#appHeader { background: @PANEL@; border-bottom: 1px solid @BORDER@; }
-QWidget#headerSeparator { background: @BORDER@; }
+QLabel#workspaceContext { background: transparent; color: @MUTED@; font-weight: 600; }
 
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
     background: @INPUT_BG@; border: 1px solid @BORDER@; border-radius: 6px;
-    padding: 7px 10px; min-height: 22px; selection-background-color: @ACCENT_BG@; color: @TEXT@;
+    padding: 7px 10px; min-height: 22px; color: @TEXT@;
+    selection-background-color: @ACCENT_BG@; selection-color: @ACCENT_TEXT@;
 }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus {
     border: 1px solid @ACCENT@;
@@ -119,7 +122,7 @@ QLabel[muted="true"] { color: @MUTED@; font-size: 12px; }
 QLabel[error="true"] { color: @DANGER@; }
 QLabel[warning="true"] { color: @DANGER@; }
 QLabel[section="true"] {
-    color: @MUTED@; font-size: 12px; font-weight: 600;
+    color: @TEXT@; font-size: 13px; font-weight: 600;
 }
 QLabel[title="true"] { font-size: 21px; font-weight: 600; }
 QLabel[badge="true"] {
@@ -156,36 +159,41 @@ QSplitter::handle:hover { background: @ACCENT@; }
 QWidget#sidebar { background: @SIDEBAR@; }
 QListWidget#navigation { background: transparent; border: none; border-radius: 0; padding: 0; }
 QListWidget#navigation QWidget { background: transparent; }
-QListWidget#navigation::item { min-height: 24px; padding: 8px; margin: 2px 0; border-radius: 5px; }
+QListWidget#navigation::item { min-height: 22px; padding: 5px 8px; margin: 2px 0; border-radius: 6px; }
 QListWidget#navigation::item:selected { background: @SELECTED@; color: @ACCENT@; font-weight: 600; }
 QListWidget#navigation::item:disabled { color: @MUTED@; background: transparent; font-size: 11px; }
-QWidget#listPane, QWidget#listHeader, QLabel#listEmpty { background: @PANEL@; }
+QWidget#listPane, QWidget#listHeader, QWidget#listEmptyPanel { background: @PANEL@; }
 QWidget#listHeader { border-bottom: 1px solid @BORDER@; }
+QFrame#recycleNotice { background: @PANEL2@; border-top: 1px solid @BORDER@; }
+QFrame#recycleNotice QLabel { background: transparent; color: @TEXT@; }
 QListWidget#accountList { background: @PANEL@; border: none; border-radius: 0; padding: 4px 0; }
 QListWidget#accountList::item { padding: 0; margin: 0; border: none; }
-QLabel#listEmpty { color: @MUTED@; padding: 24px; }
+QFrame#listEmptyCard { background: @PANEL2@; border: 1px solid @BORDER@; border-radius: 12px; }
+QFrame#listEmptyCard QLabel { background: transparent; }
+QLabel#listEmpty { color: @TEXT@; font-size: 16px; font-weight: 600; }
+QLabel#listCount { color: @MUTED@; background: @PANEL2@; border-radius: 10px; padding: 3px 8px; font-size: 12px; }
 QLabel#localHint { color: @MUTED@; font-size: 11px; padding: 12px 4px 0 4px; }
 QWidget#detailPane, QWidget#detailShell { background: @PANEL@; }
 QWidget#detailPane QWidget, QWidget#detailContent { background: transparent; }
 QWidget#detailPane QWidget#detailShell, QWidget#detailPane QWidget#detailContent,
 QWidget#detailPane QScrollArea { background: @PANEL@; }
 QWidget#detailPane QFrame[card="true"] { background: transparent; border: none; border-bottom: 1px solid @BORDER@; border-radius: 0; padding-bottom: 8px; }
-QWidget#detailPane QFrame#credentials { background: @PANEL2@; border: none; border-radius: 8px; }
+QWidget#detailPane QFrame#credentials { background: @CREDENTIAL_BG@; border: 1px solid @BORDER@; border-radius: 10px; }
 QWidget#detailPane QPushButton { background: @PANEL@; }
 QWidget#detailPane QPushButton[variant="ghost"] { background: transparent; }
 QWidget#detailPane QPushButton:hover { background: @HOVER@; }
 QWidget#detailPane QToolButton { background: transparent; border: none; border-radius: 6px; padding: 4px; }
 QWidget#detailPane QToolButton:hover { background: @HOVER@; }
+QWidget#detailPane QToolButton#editAccount { border: 1px solid @BORDER@; padding: 3px 8px; }
 QPushButton::menu-indicator { image: none; width: 0; }
 QWidget#accountRow { background: transparent; }
 QLabel[avatar="true"] { background: @HOVER@; color: @ACCENT@; border-radius: 10px; font-size: 15pt; font-weight: 600; }
 QLabel[rowTitle="true"] { font-size: 11pt; font-weight: 600; }
-QLabel[brand="true"] { font-size: 19px; font-weight: 600; padding-right: 16px; }
-QLabel#vaultLabel { color: @MUTED@; padding-left: 4px; font-size: 12px; }
+QLabel#vaultLabel { background: transparent; color: @TEXT@; font-size: 16px; font-weight: 600; }
 QLabel[paneTitle="true"] { font-size: 16px; font-weight: 600; }
 QLabel[pageTitle="true"] { font-size: 22px; font-weight: 600; }
-QLineEdit#globalSearch { background: @PANEL2@; min-height: 22px; padding: 7px 8px; border-radius: 6px; }
-QComboBox#accountSort { border: none; background: transparent; padding: 2px 4px; color: @MUTED@; font-size: 12px; min-height: 20px; }
+QLineEdit#globalSearch { background: @PANEL2@; min-height: 22px; padding: 7px 9px; border-radius: 9px; }
+QComboBox#accountSort { border: 1px solid @BORDER@; border-radius: 6px; background: @PANEL2@; padding: 2px 6px; color: @MUTED@; font-size: 12px; min-height: 20px; }
 QToolButton[variant="primary"] { background: @ACCENT_BG@; color: @ACCENT_TEXT@; padding: 8px 14px; font-weight: 600; }
 QToolButton[variant="primary"]:hover { background: @ACCENT_HOVER@; }
 QToolButton[variant="danger"] { color: @DANGER@; }

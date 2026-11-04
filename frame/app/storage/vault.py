@@ -213,7 +213,10 @@ class KdbxVault:
             self._verify_temp(tmp)
             self._assert_unchanged()
             if target.exists():
-                copy_snapshot(target, bak)
+                opened_hash = self._opened_hash
+                if opened_hash is None:
+                    raise ConflictError("vault has no verified on-disk version; reload before saving")
+                copy_snapshot(target, bak, expected_sha256=opened_hash)
             self._assert_unchanged()
             committed_hash = file_sha256(tmp)
             os.replace(tmp, target)

@@ -12,6 +12,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QGridLayout,
     QHBoxLayout,
     QLayout,
     QLabel,
@@ -58,6 +59,9 @@ class DetailPanel(QWidget):
         self.setMinimumWidth(320)
         self._catalog = catalog
         self._current_uuid: str | None = None
+        self._header_layout: QGridLayout | None = None
+        self._header_actions: QWidget | None = None
+        self._header_compact: bool | None = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
@@ -72,6 +76,7 @@ class DetailPanel(QWidget):
         shell = QWidget()
         shell.setObjectName("detailShell")
         shell_layout = QHBoxLayout(shell)
+        self._shell_layout = shell_layout
         shell_layout.setContentsMargins(24, 0, 24, 0)
         # Keep the scroll area's child at least as tall as the dynamic detail
         # content. Without this constraint Qt compresses long account cards
@@ -88,11 +93,31 @@ class DetailPanel(QWidget):
         )
         self._content_layout = QVBoxLayout(self._content)
         self._content_layout.setContentsMargins(28, 30, 28, 30)
-        self._content_layout.setSpacing(20)
+        self._content_layout.setSpacing(14)
         self._content_layout.addStretch(1)
         self._scroll.setWidget(shell)
 
         self.show_empty()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        compact = event.size().width() < 440
+        gutter = 10 if compact else 24
+        inset = 14 if compact else 28
+        self._shell_layout.setContentsMargins(gutter, 0, gutter, 0)
+        self._content_layout.setContentsMargins(inset, 24, inset, 24)
+        self._place_header_actions(compact)
+
+    def _place_header_actions(self, compact: bool) -> None:
+        layout, actions = self._header_layout, self._header_actions
+        if layout is None or actions is None or compact == self._header_compact:
+            return
+        self._header_compact = compact
+        layout.removeWidget(actions)
+        if compact:
+            layout.addWidget(actions, 1, 1, 1, 2, Qt.AlignmentFlag.AlignLeft)
+        else:
+            layout.addWidget(actions, 0, 2, Qt.AlignmentFlag.AlignVCenter)
 
     # -- public ------------------------------------------------------------
 
@@ -118,8 +143,11 @@ class DetailPanel(QWidget):
         on_copied = (lambda: self.credential_copied.emit(self._current_uuid))
 
         self._scroll.verticalScrollBar().setValue(0)
-        # Keep account identity and its actions together in one compact header.
-        header = QHBoxLayout()
+        heading = QWidget()
+        header = QGridLayout(heading)
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        header.setColumnStretch(1, 1)
         avatar = QLabel()
         avatar.setProperty("avatar", True)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -127,46 +155,64 @@ class DetailPanel(QWidget):
         palette = theme.PALETTES[theme.current_theme()]
         icon_name = categories.get(main_category(service, account), "grid")
         avatar.setPixmap(icons.line_icon(icon_name, palette["accent"]).pixmap(22, 22))
-        header.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
+        header.addWidget(avatar, 0, 0, Qt.AlignmentFlag.AlignTop)
 
         title_group = QWidget()
         title_layout = QVBoxLayout(title_group)
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(4)
-        title = QLabel(service.name + (f" · {account.alias}" if account.alias else ""))
+        title = QLabel(service.name)
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setProperty("title", True)
         title.setWordWrap(True)
+        title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         title_layout.addWidget(title)
-        category = QLabel(main_category(service, account))
+        category = QLabel(" · ".join(filter(None, (account.alias, main_category(service, account)))))
+        category.setTextFormat(Qt.TextFormat.PlainText)
         category.setProperty("muted", True)
+        category.setWordWrap(True)
+        category.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         title_layout.addWidget(category)
-        header.addWidget(title_group, 1, Qt.AlignmentFlag.AlignVCenter)
+        header.addWidget(title_group, 0, 1, Qt.AlignmentFlag.AlignVCenter)
 
         icon_color = palette["muted"]
+        actions = QWidget()
+        action_layout = QHBoxLayout(actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(4)
         edit = QToolButton()
         edit.setIcon(icons.line_icon("edit", icon_color))
         edit.setObjectName("editAccount")
-        edit.setToolTip("编辑账户")
+        edit.setText("编辑")
+        edit.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        edit.setToolTip("编辑账户 · Ctrl+E")
         edit.setAccessibleName("编辑账户")
         edit.setAutoRaise(True)
+        edit.setFixedHeight(32)
         edit.clicked.connect(self.edit_requested.emit)
-        header.addWidget(edit)
+        action_layout.addWidget(edit)
         more = QToolButton()
         more.setIcon(icons.line_icon("more", icon_color))
         more.setToolTip("更多账户操作")
         more.setAccessibleName("更多账户操作")
         more.setObjectName("accountMore")
         more.setAutoRaise(True)
+        more.setFixedSize(32, 32)
         menu = QMenu(more)
         delete = menu.addAction("移入回收站")
         delete.triggered.connect(self.delete_requested.emit)
         more.setMenu(menu)
         more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        header.addWidget(more)
-        self._content_layout.addLayout(header)
+        action_layout.addWidget(more)
+        self._header_layout = header
+        self._header_actions = actions
+        self._place_header_actions(self.width() < 440)
+        self._content_layout.addWidget(heading)
 
-        # credentials card
+        urls = list(dict.fromkeys(
+            url for url in (account.primary_url, *service.urls, *service.login_urls) if url
+        ))
+        primary_url = urls[0] if urls else ""
         if account.username or account.password:
             cred = Card()
             cred.setObjectName("credentials")
@@ -175,24 +221,24 @@ class DetailPanel(QWidget):
                 cred.add_row(CopyRow("账号", account.username, on_copied=on_copied))
             if account.password:
                 cred.add_row(SecretRow("密码", account.password, on_copied=on_copied))
+            if primary_url:
+                cred.add_row(CopyRow("主网址", primary_url, on_copied=on_copied))
+                urls = urls[1:]
             self._content_layout.addWidget(cred)
-        urls = list(dict.fromkeys(url for url in [account.primary_url, *service.urls, *service.login_urls] if url))
         if urls:
             sites = Card()
-            sites.add_row(SectionHeader("登录网址"))
-            for index, url in enumerate(urls):
-                sites.add_row(CopyRow("主网址" if index == 0 else "关联网址", url, on_copied=on_copied))
+            sites.add_row(SectionHeader("登录网址" if urls[0] == primary_url else "其他登录网址"))
+            for url in urls:
+                sites.add_row(CopyRow("主网址" if url == primary_url else "关联网址", url, on_copied=on_copied))
             self._content_layout.addWidget(sites)
-        contact = Card()
-        contact.add_row(SectionHeader("邮箱与手机"))
-        if account.email:
-            contact.add_row(CopyRow("注册邮箱", account.email, on_copied=on_copied))
-        if account.phone:
-            contact.add_row(CopyRow("手机号", account.phone, on_copied=on_copied))
         if account.email or account.phone:
+            contact = Card()
+            contact.add_row(SectionHeader("邮箱与手机"))
+            if account.email:
+                contact.add_row(CopyRow("注册邮箱", account.email, on_copied=on_copied))
+            if account.phone:
+                contact.add_row(CopyRow("手机号", account.phone, on_copied=on_copied))
             self._content_layout.addWidget(contact)
-        else:
-            contact.deleteLater()
 
         # login methods
         if account.login_methods:
@@ -302,6 +348,9 @@ class DetailPanel(QWidget):
         return line
 
     def _clear(self) -> None:
+        self._header_layout = None
+        self._header_actions = None
+        self._header_compact = None
         for row in self._content.findChildren(SecretRow):
             row.set_value("")
             row._on_copied = None

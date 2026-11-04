@@ -154,9 +154,17 @@ class SearchIndex:
         for identity in catalog.identities:
             identities.setdefault(identity.uuid, identity)
         for service in catalog.services:
+            service_urls = [
+                (*_url_tokens(url), "平台网址")
+                for url in service.urls
+            ]
+            service_urls.extend(
+                (*_url_tokens(url), "登录网址")
+                for url in service.login_urls
+            )
             for account in service.accounts:
                 self._entries.append(
-                    self._index_account(service, account, identities)
+                    self._index_account(service, account, identities, service_urls)
                 )
 
     def clear(self) -> None:
@@ -167,7 +175,11 @@ class SearchIndex:
         return len(self._entries)
 
     def _index_account(
-        self, service: Service, account: Account, identities: dict[str, Identity]
+        self,
+        service: Service,
+        account: Account,
+        identities: dict[str, Identity],
+        service_urls: list[tuple[list[tuple[str, bool]], str, str, str]],
     ) -> _IndexedAccount:
         entry = _IndexedAccount(service=service, account=account)
         add = entry.tokens.append
@@ -193,12 +205,12 @@ class SearchIndex:
             for digits in _phone_tokens(account.phone):
                 add((digits, _WEIGHT_EMAIL_PHONE, "手机号"))
 
-        for url, label in (
-            (account.primary_url, "网址"),
-            *( (u, "平台网址") for u in service.urls ),
-            *( (u, "登录网址") for u in service.login_urls ),
-        ):
-            tokens, host, path = _url_tokens(url)
+        def add_url_index(
+            tokens: list[tuple[str, bool]],
+            host: str,
+            path: str,
+            label: str,
+        ) -> None:
             if host:
                 entry.urls.append((host.removeprefix("www."), path))
             for token, is_domain in tokens:
@@ -207,6 +219,11 @@ class SearchIndex:
                     add((token, _WEIGHT_DOMAIN, "域名"))
                 else:
                     add((token, _WEIGHT_URL, label))
+
+        tokens, host, path = _url_tokens(account.primary_url)
+        add_url_index(tokens, host, path, "网址")
+        for tokens, host, path, label in service_urls:
+            add_url_index(tokens, host, path, label)
 
         identity_hints: list[str] = []
         for lm in account.login_methods:
@@ -260,9 +277,13 @@ class SearchIndex:
         query = _normalize(query)
         if not query or not self._entries:
             return []
-        terms = [t for t in _NON_WORD.split(query) if t]
+        terms = [term for term in _NON_WORD.split(query) if term]
         if not terms:
             return []
+        terms_with_urls = [
+            (term, _query_url_parts(term))
+            for term in terms
+        ]
 
         hits: list[SearchHit] = []
         for entry in self._entries:
@@ -270,8 +291,8 @@ class SearchIndex:
             best_label = ""
             best_score = 0.0
             ok = True
-            for term in terms:
-                term_score, label = self._score_term(entry, term)
+            for term, url_parts in terms_with_urls:
+                term_score, label = self._score_term(entry, term, url_parts)
                 if term_score <= 0:
                     ok = False
                     break
@@ -302,7 +323,12 @@ class SearchIndex:
             hits = [h for h in hits if h.score >= _FUZZY_MIN_SCORE]
         return hits[:limit]
 
-    def _score_term(self, entry: _IndexedAccount, term: str) -> tuple[float, str]:
+    def _score_term(
+        self,
+        entry: _IndexedAccount,
+        term: str,
+        query_url_parts: list[tuple[str, str]],
+    ) -> tuple[float, str]:
         best = 0.0
         best_label = ""
         for token, weight, label in entry.tokens:
@@ -312,7 +338,7 @@ class SearchIndex:
         # domain queries ("pan.baidu.com", "baidu") get the domain boost
         if "." in term and term in entry.domains:
             best = max(best, _WEIGHT_DOMAIN * 3)
-        for host, path in _query_url_parts(term):
+        for host, path in query_url_parts:
             for stored in entry.domains:
                 stored = stored.removeprefix("www.")
                 if host == stored:

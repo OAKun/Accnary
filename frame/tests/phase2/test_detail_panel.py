@@ -8,10 +8,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QToolButton
 
 from app.models import LicenseInfo, LicenseMode
 from app.ui.detail_panel import DetailPanel
+from app.ui.widgets import CopyRow, SecretRow
 
 
 def _walk(widget) -> str:
@@ -36,8 +37,6 @@ def test_show_account_renders_sections(catalog, qapp):
 
 
 def test_password_masked_until_revealed(catalog, qapp):
-    from app.ui.widgets import SecretRow
-
     account = catalog.catalog.all_accounts()[0]
     panel = DetailPanel(catalog)
     panel.show_account(catalog.catalog.services[0], account)
@@ -52,10 +51,71 @@ def test_password_masked_until_revealed(catalog, qapp):
     assert password_row.value_label.text() == "••••••••"
 
 
+def test_narrow_details_give_values_more_space(catalog, qapp):
+    service = catalog.catalog.services[0]
+    account = service.accounts[0]
+    service.name = "Example" * 30
+    account.primary_url = "https://example.invalid/" + "segment/" * 20
+    panel = DetailPanel(catalog)
+    panel.resize(320, 600)
+    panel.show_account(service, account)
+    panel.show()
+    qapp.processEvents()
+    row = next(
+        row for row in panel.findChildren(CopyRow)
+        if row.value_label.text() == account.primary_url
+    )
+    key = next(label for label in row.findChildren(QLabel) if label.text() == "主网址")
+    assert row.value_label.y() >= key.geometry().bottom()
+    assert row.value_label.width() >= 160
+    assert row.copy_btn.geometry().right() < row.width()
+    assert panel._scroll.horizontalScrollBar().maximum() == 0
+
+    panel.resize(700, 600)
+    qapp.processEvents()
+    assert row.value_label.x() > key.geometry().right()
+    assert row.value_label.text() == account.primary_url
+    panel.close()
+
+
 def test_show_empty_hint(catalog, qapp):
     panel = DetailPanel(catalog)
     panel.show_empty("测试提示")
     assert "测试提示" in _walk(panel)
+
+
+def test_edit_action_moves_below_title_in_narrow_detail(catalog, qapp):
+    service = catalog.catalog.services[0]
+    panel = DetailPanel(catalog)
+    panel.resize(320, 600)
+    panel.show_account(service, service.accounts[0])
+    panel.show()
+    qapp.processEvents()
+    edit = panel.findChild(QToolButton, "editAccount")
+    title = next(label for label in panel.findChildren(QLabel) if label.text() == service.name)
+    assert edit.text() == "编辑"
+    assert edit.mapTo(panel, edit.rect().topLeft()).y() > title.mapTo(panel, title.rect().bottomLeft()).y()
+
+    panel.resize(700, 600)
+    qapp.processEvents()
+    assert edit.mapTo(panel, edit.rect().topLeft()).x() > title.mapTo(panel, title.rect().topRight()).x()
+    panel.close()
+
+
+def test_primary_url_is_grouped_with_credentials_without_duplicate(catalog, qapp):
+    service = catalog.catalog.services[0]
+    account = service.accounts[0]
+    alternate = "https://example.invalid/alternate"
+    service.urls = [account.primary_url, alternate]
+    service.login_urls = [alternate]
+    panel = DetailPanel(catalog)
+    panel.show_account(service, account)
+    rows = panel.findChildren(CopyRow)
+    primary = [row for row in rows if row.value_label.text() == account.primary_url]
+    assert len(primary) == 1
+    assert primary[0].parentWidget().objectName() == "credentials"
+    assert sum(row.value_label.text() == alternate for row in rows) == 1
+    assert "其他登录网址" in _walk(panel)
 
 
 def test_empty_detail_is_centered_in_scroll_view(catalog, qapp):

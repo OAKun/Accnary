@@ -13,6 +13,7 @@ The application source, tests, build files, and project documentation are in [`f
 - [Data format](frame/docs/DATA_FORMAT.md)
 - [Locked dependencies](frame/requirements-lock.txt)
 - [License](LICENSE)
+- [Release process: GitHub source and CNB/ToolHub EXE](RELEASE_PROCESS.md)
 
 ## Development
 

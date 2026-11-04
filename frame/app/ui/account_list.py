@@ -32,7 +32,9 @@ def public_summary(service, account):
             LOGIN_METHOD_LABELS.get(method.type, method.type.value)
             for method in account.login_methods
         )) or "无密码账户"
-    subtitle = " · ".join(part for part in (account.alias, identity) if part)
+    alias = account.alias.strip()
+    title = alias or service.name
+    subtitle = f"{service.name} · {identity}" if alias and alias != service.name else identity
     url = account.primary_url or next(iter(service.urls), "")
     try:
         host = urlsplit(url if "://" in url else "//" + url).hostname if url else ""
@@ -43,7 +45,7 @@ def public_summary(service, account):
         meta += " · " + LICENSE_MODE_LABELS.get(account.license.mode, "授权")
     elif host:
         meta += " · " + host
-    return service.name, subtitle, meta
+    return title, subtitle, meta
 
 
 class AccountDelegate(QStyledItemDelegate):
@@ -52,9 +54,11 @@ class AccountDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._icons = {}
+        self._base_font = None
+        self._theme_name = None
 
     def sizeHint(self, option, index):  # noqa: N802
-        return QSize(300, 72)
+        return QSize(300, 60)
 
     def _icon(self, name, color):
         key = name, color
@@ -62,12 +66,39 @@ class AccountDelegate(QStyledItemDelegate):
             self._icons[key] = icons.line_icon(name, color)
         return self._icons[key]
 
+    def _update_fonts(self, font: QFont) -> None:
+        self._base_font = QFont(font)
+        self._title_font = QFont(font)
+        self._title_font.setPixelSize(theme.TYPE["body"])
+        self._title_font.setWeight(QFont.Weight.DemiBold)
+        self._title_metrics = QFontMetrics(self._title_font)
+        self._subtitle_font = QFont(font)
+        self._subtitle_font.setPixelSize(theme.TYPE["small"])
+        self._subtitle_font.setWeight(QFont.Weight.Normal)
+        self._subtitle_metrics = QFontMetrics(self._subtitle_font)
+
+    def _update_palette(self, name: str) -> None:
+        self._theme_name = name
+        self._palette = theme.PALETTES[name]
+        self._colors = {
+            role: QColor(self._palette[role])
+            for role in ("text", "muted", "accent", "hover", "selected")
+        }
+        focus_color = QColor(self._colors["accent"])
+        focus_color.setAlpha(150)
+        self._focus_pen = QPen(focus_color, 1, Qt.PenStyle.SolidLine)
+
     def paint(self, painter, option, index):
         data = index.data(summary_role)
         if not data:
             return
         title, subtitle, meta, icon_name = data
-        colors = theme.PALETTES[theme.current_theme()]
+        theme_name = theme.current_theme()
+        if self._theme_name != theme_name:
+            self._update_palette(theme_name)
+        if self._base_font != option.font:
+            self._update_fonts(option.font)
+        colors = self._colors
         painter.save()
         painter.setRenderHint(painter.RenderHint.Antialiasing)
         row = option.rect.adjusted(6, 2, -6, -2)
@@ -75,30 +106,26 @@ class AccountDelegate(QStyledItemDelegate):
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         if selected or hovered:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(colors["selected" if selected else "hover"]))
+            painter.setBrush(colors["selected" if selected else "hover"])
             painter.drawRoundedRect(row, 8, 8)
-        icon_box = QRect(row.left() + 12, row.top() + 18, 24, 24)
-        self._icon(icon_name, colors["accent"] if selected else colors["muted"]).paint(painter, icon_box)
-        left, right = row.left() + 48, row.right() - 12
-        font = QFont(option.font)
-        font.setPixelSize(theme.TYPE["body"])
-        font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(font)
-        painter.setPen(QColor(colors["text"]))
-        painter.drawText(QRect(left, row.top() + 8, right - left, 22), Qt.AlignmentFlag.AlignVCenter,
-                         QFontMetrics(font).elidedText(title, Qt.TextElideMode.ElideRight, right - left))
-        font.setPixelSize(theme.TYPE["small"])
-        font.setWeight(QFont.Weight.Normal)
-        painter.setFont(font)
-        painter.setPen(QColor(colors["muted"]))
+        if selected:
+            painter.setBrush(colors["accent"])
+            painter.drawRoundedRect(QRect(row.left() + 3, row.center().y() - 10, 3, 20), 1, 1)
+        icon_box = QRect(row.left() + 10, row.center().y() - 10, 20, 20)
+        self._icon(icon_name, self._palette["accent" if selected else "muted"]).paint(painter, icon_box)
+        left, right = row.left() + 42, row.right() - 10
+        painter.setFont(self._title_font)
+        painter.setPen(colors["text"])
+        painter.drawText(QRect(left, row.top() + 6, right - left, 21), Qt.AlignmentFlag.AlignVCenter,
+                         self._title_metrics.elidedText(title, Qt.TextElideMode.ElideRight, right - left))
+        painter.setFont(self._subtitle_font)
+        painter.setPen(colors["muted"])
         width = row.right() - 12 - left
-        secondary = " · ".join(part for part in (subtitle, meta) if part)
-        painter.drawText(QRect(left, row.top() + 34, width, 18), Qt.AlignmentFlag.AlignVCenter,
-                         QFontMetrics(font).elidedText(secondary, Qt.TextElideMode.ElideRight, width))
+        secondary = subtitle or meta
+        painter.drawText(QRect(left, row.top() + 29, width, 18), Qt.AlignmentFlag.AlignVCenter,
+                         self._subtitle_metrics.elidedText(secondary, Qt.TextElideMode.ElideRight, width))
         if option.state & QStyle.StateFlag.State_HasFocus:
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            focus_color = QColor(colors["accent"])
-            focus_color.setAlpha(150)
-            painter.setPen(QPen(focus_color, 1, Qt.PenStyle.SolidLine))
+            painter.setPen(self._focus_pen)
             painter.drawRoundedRect(row.adjusted(1, 1, -1, -1), 8, 8)
         painter.restore()

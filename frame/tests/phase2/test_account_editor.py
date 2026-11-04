@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import uuid as uuidlib
 
-from PySide6.QtWidgets import QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QMessageBox, QPushButton
 
 from app.models import (
     Account,
@@ -25,6 +27,164 @@ from app.services import CatalogService
 from app.ui.account_editor import AccountEditor, NewIdentityDialog
 
 from .conftest import TEST_PASSWORD
+
+
+def test_duplicate_account_shows_error_and_keeps_form(catalog, qapp):
+    service = catalog.catalog.services[0]
+    editor = AccountEditor(catalog, service=service)
+    editor.username_edit.setText(service.accounts[0].username)
+    editor.password_input.edit.setText("fictional-retry-password")
+    editor._on_accept()
+    assert editor.result() != QDialog.DialogCode.Accepted
+    assert "相同用户名" in editor.error_label.text()
+    assert editor.password_input.edit.text() == "fictional-retry-password"
+    assert len(catalog.catalog.all_accounts()) == 1
+    editor.done(QDialog.DialogCode.Rejected)
+
+
+def test_username_completion_prioritizes_current_platform(catalog, qapp):
+    first_service = catalog.catalog.services[0]
+    second = catalog.add_service("示例平台", login_urls=["https://example.invalid/login"])
+    catalog.add_account(second, Account(username="ui-second", password="fictional-password"))
+    catalog.add_account(second, Account(username="ui-user"))
+    editor = AccountEditor(catalog)
+    completer = editor.username_edit.completer()
+
+    def matching_usernames():
+        completer.setCompletionPrefix("ui-")
+        matches = completer.completionModel()
+        return [matches.index(row, 0).data() for row in range(matches.rowCount())]
+
+    editor.service_combo.setCurrentText(second.name)
+    assert matching_usernames() == ["ui-second", "ui-user"]
+    assert "https://example.invalid/login" in editor._url_suggestions.stringList()
+    assert not editor.username_edit.text()
+    assert not editor.password_input.edit.text()
+    editor.service_combo.setCurrentText(first_service.name)
+    assert matching_usernames() == ["ui-user", "ui-second"]
+    editor.service_combo.setCurrentText("新平台")
+    assert matching_usernames() == ["ui-user", "ui-second"]
+    assert not editor._url_suggestions.stringList()
+    editor.done(QDialog.DialogCode.Rejected)
+    assert not editor._username_suggestions.stringList()
+
+
+def test_duplicate_field_selects_offending_row(catalog, qapp):
+    editor = AccountEditor(catalog)
+    editor.service_combo.setCurrentText("示例平台")
+    editor._add_field_row("重复字段", "甲")
+    editor._add_field_row("重复字段", "乙")
+    field = editor.fields_layout.itemAt(1).itemAt(0).widget()
+    editor.tabs.setCurrentIndex(0)
+    editor.show()
+    qapp.processEvents()
+    editor._on_accept()
+    assert editor.tabs.tabText(editor.tabs.currentIndex()) == "自定义"
+    assert field.hasFocus()
+    assert field.selectedText() == "重复字段"
+    assert "不能重复" in editor.error_label.text()
+    editor.done(QDialog.DialogCode.Rejected)
+
+
+def test_editor_tabs_and_save_stay_visible_when_fields_scroll(catalog, qapp):
+    editor = AccountEditor(catalog)
+    editor.resize(580, 470)
+    for index in range(24):
+        editor._add_field_row(f"字段 {index}", "示例值")
+    editor.show()
+    editor.tabs.setCurrentIndex(editor.tabs.count() - 1)
+    QTest.qWait(100)
+    fields_scroll = editor.tabs.currentWidget()
+    scrollbar = fields_scroll.verticalScrollBar()
+    assert scrollbar.maximum() > 0
+    tab_bar = editor.tabs.tabBar()
+    save = editor.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+    tab_position = tab_bar.mapTo(editor, tab_bar.rect().topLeft())
+    save_position = save.mapTo(editor, save.rect().topLeft())
+
+    scrollbar.setValue(scrollbar.maximum())
+    qapp.processEvents()
+    assert tab_bar.mapTo(editor, tab_bar.rect().topLeft()) == tab_position
+    assert save.mapTo(editor, save.rect().topLeft()) == save_position
+    assert save.isVisible()
+    editor.tabs.setCurrentIndex(0)
+    assert editor.tabs.currentWidget().verticalScrollBar().value() == 0
+    editor.tabs.setCurrentWidget(fields_scroll)
+    QTest.qWait(100)
+    assert scrollbar.value() == scrollbar.maximum()
+    editor.done(QDialog.DialogCode.Rejected)
+
+
+def test_add_field_focuses_new_row_in_scroll_view(catalog, qapp):
+    editor = AccountEditor(catalog)
+    editor.resize(580, 470)
+    for index in range(24):
+        editor._add_field_row(f"字段 {index}", "示例值")
+    editor.tabs.setCurrentIndex(editor.tabs.count() - 1)
+    editor.show()
+    QTest.qWait(100)
+    scroll = editor.tabs.currentWidget()
+    add_button = next(button for button in scroll.findChildren(QPushButton) if button.text() == "添加字段")
+    scroll.ensureWidgetVisible(add_button)
+    add_button.click()
+    QTest.qWait(100)
+    field = editor.fields_layout.itemAt(24).itemAt(0).widget()
+    assert field.hasFocus()
+    top = field.mapTo(scroll.viewport(), field.rect().topLeft()).y()
+    assert 0 <= top < scroll.viewport().height() - field.height()
+    editor.done(QDialog.DialogCode.Rejected)
+
+
+def test_escape_and_close_confirm_unsaved_edits(catalog, qapp, monkeypatch):
+    editor = AccountEditor(catalog)
+    editor.show()
+    qapp.processEvents()
+    editor.username_edit.setText("未保存的账户")
+    answers = iter((QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Discard))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: next(answers))
+    QTest.keyClick(editor.username_edit, Qt.Key.Key_Escape)
+    assert editor.isVisible()
+    assert editor.username_edit.text() == "未保存的账户"
+    editor.close()
+    assert not editor.isVisible()
+    assert not editor.username_edit.text()
+
+
+def test_unchanged_editor_closes_without_confirmation(catalog, qapp, monkeypatch):
+    editor = AccountEditor(catalog)
+    editor.show()
+    qapp.processEvents()
+    editor.username_edit.setText("临时修改")
+    editor.username_edit.clear()
+    editor.tabs.setCurrentIndex(editor.tabs.count() - 1)
+
+    def unexpected_prompt(*args):
+        raise AssertionError("unchanged form should close directly")
+
+    monkeypatch.setattr(QMessageBox, "question", unexpected_prompt)
+    editor.close()
+    assert not editor.isVisible()
+
+
+def test_edit_assembles_metadata_without_copying_sibling_accounts(catalog, qapp):
+    class SiblingAccount(Account):
+        def __deepcopy__(self, memo):
+            raise AssertionError("editing must not copy sibling credentials")
+
+    service = catalog.catalog.services[0]
+    account = service.accounts[0]
+    sibling = SiblingAccount(uuid="fictional-sibling", password="fictional-secret")
+    service.accounts.append(sibling)
+    service._extra = {"extension": {"values": [1]}}
+    editor = AccountEditor(catalog, service=service, account=account)
+    assembled_service, assembled_account = editor._assemble()
+    assert assembled_service.accounts == []
+    assert assembled_account.uuid == account.uuid
+    assembled_service._extra["extension"]["values"].append(2)
+    assert service._extra == {"extension": {"values": [1]}}
+    assert service.accounts[-1] is sibling
+    editor.reject()
+    editor.deleteLater()
 
 
 def test_create_account_via_editor_persists(catalog, qapp):
